@@ -102,6 +102,22 @@ This is **not** a production system—it is a **proof-of-concept UI and interact
 
 ---
 
+## Screenshots
+
+### Dashboard
+
+![Dashboard](screenshots/Board.png)
+
+### Changes
+
+![Changes](screenshots/Changes.png)
+
+### Merge Visualizer
+
+![Merge](screenshots/Merge.png)
+
+---
+
 ## Design Philosophy
 
 - **Git-first mindset** (no abstraction hiding Git concepts)
