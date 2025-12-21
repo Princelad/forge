@@ -2,7 +2,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     style::Stylize,
-    text::Line,
+    text::{Line, Span},
     widgets::Block,
 };
 
@@ -56,26 +56,40 @@ impl Screen {
         )
         .split(inner_area);
 
-        // Inside main content, split into menu and page area
-        let layout = Layout::new(
-            Direction::Horizontal,
-            [Constraint::Length(30), Constraint::Min(0)],
-        )
-        .split(vlayout[0]);
+        // Create menu bar for the content block header
+        let mut menu_line = Vec::new();
+        for (idx, item) in self.main_menu.menu_items.iter().enumerate() {
+            if idx == menu_selected_index {
+                menu_line.push(Span::styled(
+                    format!(" {} ", item),
+                    ratatui::style::Style::new().reversed(),
+                ));
+            } else {
+                menu_line.push(Span::raw(format!(" {} ", item)));
+            }
+            if idx < self.main_menu.menu_items.len() - 1 {
+                menu_line.push(Span::raw("|"));
+            }
+        }
+        
+        let content_title = Line::from(menu_line).left_aligned();
+        let content_block = Block::bordered().title(content_title);
+        let content_area = content_block.inner(vlayout[0]);
+        frame.render_widget(content_block, vlayout[0]);
 
-        self.main_menu.render(frame, layout[0], menu_selected_index, focus);
+        // Render the content page based on mode
         match mode {
-            AppMode::Dashboard => self.dashborard.render(frame, layout[1], &store.projects, selected_project),
+            AppMode::Dashboard => self.dashborard.render(frame, content_area, &store.projects, selected_project),
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.changes.render(frame, layout[1], p, selected_change, commit_msg); }
+                if let Some(p) = proj { self.changes.render(frame, content_area, p, selected_change, commit_msg); }
             }
-            AppMode::MergeVisualizer => self.merge.render(frame, layout[1]),
+            AppMode::MergeVisualizer => self.merge.render(frame, content_area),
             AppMode::ProjectBoard => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.board.render(frame, layout[1], p); }
+                if let Some(p) = proj { self.board.render(frame, content_area, p); }
             }
-            AppMode::Settings => self.settings.render(frame, layout[1]),
+            AppMode::Settings => self.settings.render(frame, content_area),
         }
 
         // Render the status bar on bottom

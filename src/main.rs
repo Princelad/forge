@@ -46,7 +46,7 @@ impl App {
             key_handler: KeyHandler::new(),
             current_view: AppMode::Dashboard,
             prev_view: AppMode::Dashboard,
-            focus: Focus::Menu,
+            focus: Focus::View,
             menu_selected_index: 0,
             selected_project: None,
             status_message: String::from("Ready"),

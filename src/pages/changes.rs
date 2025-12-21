@@ -1,21 +1,31 @@
-use ratatui::{Frame, layout::{Rect, Layout, Direction, Constraint}, widgets::{Block, Paragraph, List, ListItem, ListState}, style::Stylize};
-use crate::data::{Project, Change};
+use crate::data::{Change, Project};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::Stylize,
+    widgets::{Block, List, ListItem, ListState, Paragraph},
+};
 
 #[derive(Debug)]
 pub struct ChangesPage;
 
 impl ChangesPage {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, project: &Project, selected: usize, commit_msg: &str) {
-        let block = Block::bordered().title("Changes (mock)").yellow();
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        project: &Project,
+        selected: usize,
+        commit_msg: &str,
+    ) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(3)])
-            .split(inner);
+            .split(area);
 
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -45,7 +55,10 @@ impl ChangesPage {
             .get(selected)
             .map(|c| c.diff_preview.clone())
             .unwrap_or_else(|| "Select a file".into());
-        frame.render_widget(Paragraph::new(preview).block(Block::bordered().title("Diff Preview")), cols[1]);
+        frame.render_widget(
+            Paragraph::new(preview).block(Block::bordered().title("Diff Preview")),
+            cols[1],
+        );
 
         // Bottom: commit message input
         frame.render_widget(
@@ -56,7 +69,11 @@ impl ChangesPage {
     }
 
     fn fmt_change(c: &Change) -> String {
-        let status = match c.status { crate::data::FileStatus::Modified => "M", crate::data::FileStatus::Added => "A", crate::data::FileStatus::Deleted => "D" };
+        let status = match c.status {
+            crate::data::FileStatus::Modified => "M",
+            crate::data::FileStatus::Added => "A",
+            crate::data::FileStatus::Deleted => "D",
+        };
         format!("[{status}] {}", c.path)
     }
 }

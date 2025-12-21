@@ -1,4 +1,4 @@
-use ratatui::{Frame, layout::{Rect, Layout, Direction, Constraint}, widgets::{Block, Paragraph, List, ListItem}, style::Stylize};
+use ratatui::{Frame, layout::{Rect, Layout, Direction, Constraint}, widgets::{Block, List, ListItem}};
 use crate::data::{Project, ModuleStatus};
 
 #[derive(Debug)]
@@ -8,14 +8,10 @@ impl ProjectBoard {
     pub fn new() -> Self { Self }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, project: &Project) {
-        let block = Block::bordered().title("Project Board (mock)").green();
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(33), Constraint::Percentage(34), Constraint::Percentage(33)])
-            .split(inner);
+            .split(area);
 
         let mk = |status: ModuleStatus| {
             let items: Vec<ListItem> = project

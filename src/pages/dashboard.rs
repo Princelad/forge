@@ -10,14 +10,10 @@ impl Dashboard {
     }
 
     pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[Project], selected: usize) {
-        let block = Block::bordered().title("Dashboard").blue();
-        let inner = block.inner(area);
-        frame.render_widget(block, area);
-
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(32), Constraint::Min(0)])
-            .split(inner);
+            .split(area);
 
         // Left: project list
         let items: Vec<ListItem> = projects
