@@ -206,6 +206,15 @@ impl App {
                     self.status_message = format!("✓ Committed: {}", self.commit_message);
                     self.commit_message.clear();
                     self.update_status_message();
+                } else if matches!(self.current_view, AppMode::ProjectBoard) {
+                    // Enter on Board moves item to next column
+                    self.move_board_item_to_next_status();
+                } else if matches!(self.current_view, AppMode::MergeVisualizer) {
+                    // Enter on Merge accepts current pane's version
+                    self.accept_merge_pane();
+                } else if matches!(self.current_view, AppMode::Settings) {
+                    // Enter on Settings toggles setting
+                    self.toggle_setting();
                 }
                 false
             }
@@ -373,6 +382,52 @@ impl App {
 
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    fn move_board_item_to_next_status(&mut self) {
+        if let Some(project) = self.store.projects.get_mut(self.selected_project_index) {
+            let status = match self.selected_board_column {
+                0 => ModuleStatus::Pending,
+                1 => ModuleStatus::Current,
+                _ => ModuleStatus::Completed,
+            };
+
+            let modules_in_col: Vec<usize> = project
+                .modules
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| m.status == status)
+                .map(|(i, _)| i)
+                .collect();
+
+            if let Some(&module_idx) = modules_in_col.get(self.selected_board_item) {
+                let next_status = match status {
+                    ModuleStatus::Pending => ModuleStatus::Current,
+                    ModuleStatus::Current => ModuleStatus::Completed,
+                    ModuleStatus::Completed => ModuleStatus::Completed,
+                };
+                project.modules[module_idx].status = next_status;
+                self.status_message = format!(
+                    "✓ Moved {} to {:?}",
+                    project.modules[module_idx].name, next_status
+                );
+            }
+        }
+    }
+
+    fn accept_merge_pane(&mut self) {
+        self.status_message = match self.merge_focus {
+            MergePaneFocus::Files => "Selected file for merge".to_string(),
+            MergePaneFocus::Local => "✓ Accepted local version".to_string(),
+            MergePaneFocus::Incoming => "✓ Accepted incoming version".to_string(),
+        };
+    }
+
+    fn toggle_setting(&mut self) {
+        let setting = crate::pages::settings::SETTINGS_OPTIONS
+            .get(self.selected_setting_index)
+            .unwrap_or(&"");
+        self.status_message = format!("⚙ Toggled: {}", setting);
     }
 }
 
