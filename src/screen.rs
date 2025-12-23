@@ -62,6 +62,9 @@ impl Screen {
         project_scroll: usize,
         changes_scroll: usize,
         merge_scroll: usize,
+        search_active: bool,
+        search_buffer: &str,
+        filtered_projects: &[&crate::data::Project],
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -105,9 +108,11 @@ impl Screen {
             AppMode::Dashboard => self.dashborard.render(
                 frame,
                 content_area,
-                &store.projects,
+                filtered_projects,
                 selected_project,
                 project_scroll,
+                search_active,
+                search_buffer,
             ),
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);

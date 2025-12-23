@@ -9,7 +9,7 @@ impl Dashboard {
         Self
     }
 
-    pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[Project], selected: usize, scroll: usize) {
+    pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[&Project], selected: usize, scroll: usize, search_active: bool, search_buffer: &str) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(32), Constraint::Min(0)])
@@ -21,11 +21,18 @@ impl Dashboard {
             .map(|p| ListItem::new(p.name.clone()))
             .collect();
         let mut state = ListState::default()
-            .with_selected(Some(selected))
+            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
             .with_offset(scroll);
+        
+        let title = if search_active {
+            format!("Projects (search: {})", search_buffer)
+        } else {
+            "Projects".to_string()
+        };
+        
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title("Projects"))
+                .block(Block::bordered().title(title))
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true)
                 .highlight_style(ratatui::style::Style::new().reversed()),

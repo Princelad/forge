@@ -13,6 +13,7 @@ pub enum KeyAction {
     ScrollPageDown,
     Select,
     Help,
+    Search,
     InputChar(char),
     Backspace,
     None,
@@ -42,6 +43,7 @@ impl KeyHandler {
             (_, KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => KeyAction::Quit,
             (_, KeyCode::Char('?')) => KeyAction::Help,
+            (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
             (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
             (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k')) => KeyAction::NavigateUp,
             (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,

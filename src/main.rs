@@ -48,6 +48,9 @@ pub struct App {
     project_scroll: usize,
     changes_scroll: usize,
     merge_scroll: usize,
+    // Search functionality
+    search_active: bool,
+    search_buffer: String,
 }
 
 impl App {
@@ -75,6 +78,8 @@ impl App {
             project_scroll: 0,
             changes_scroll: 0,
             merge_scroll: 0,
+            search_active: false,
+            search_buffer: String::new(),
         }
     }
 
@@ -91,6 +96,7 @@ impl App {
     }
 
     fn render(&mut self, frame: &mut Frame) {
+        let filtered_projects = self.get_filtered_projects();
         self.screen.render(
             frame,
             self.current_view,
@@ -110,6 +116,9 @@ impl App {
             self.project_scroll,
             self.changes_scroll,
             self.merge_scroll,
+            self.search_active,
+            &self.search_buffer,
+            &filtered_projects,
         );
     }
 
@@ -177,6 +186,13 @@ impl App {
             KeyAction::Back => {
                 if self.show_help {
                     self.show_help = false;
+                    return false;
+                }
+                if self.search_active {
+                    self.search_active = false;
+                    self.search_buffer.clear();
+                    self.selected_project_index = 0;
+                    self.update_status_message();
                     return false;
                 }
                 if self.focus == Focus::Menu {
@@ -388,13 +404,18 @@ impl App {
                 false
             }
             KeyAction::InputChar(c) => {
-                if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
+                if self.search_active {
+                    // In search mode, add character to search buffer
+                    self.search_buffer.push(c);
+                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
                     self.commit_message.push(c);
                 }
                 false
             }
             KeyAction::Backspace => {
-                if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
+                if self.search_active {
+                    self.search_buffer.pop();
+                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
                     self.commit_message.pop();
                 }
                 false
@@ -452,12 +473,38 @@ impl App {
                 }
                 false
             }
+            KeyAction::Search => {
+                if self.focus == Focus::View {
+                    self.search_active = !self.search_active;
+                    if self.search_active {
+                        self.search_buffer.clear();
+                        self.selected_project_index = 0;
+                        self.status_message = "Search projects (type to filter, Esc to exit)".to_string();
+                    } else {
+                        self.search_buffer.clear();
+                        self.update_status_message();
+                    }
+                }
+                false
+            }
             _ => false,
         }
     }
 
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    fn get_filtered_projects(&self) -> Vec<&crate::data::Project> {
+        if self.search_buffer.is_empty() {
+            return self.store.projects.iter().collect();
+        }
+        let query = self.search_buffer.to_lowercase();
+        self.store
+            .projects
+            .iter()
+            .filter(|p| p.name.to_lowercase().contains(&query))
+            .collect()
     }
 
     fn clamp_selections_for_project(&mut self) {
