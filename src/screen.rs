@@ -13,7 +13,7 @@ use crate::data::FakeStore;
 use crate::pages::dashboard::Dashboard;
 use crate::pages::main_menu::MainMenu;
 use crate::pages::changes::ChangesPage;
-use crate::pages::merge_visualizer::MergeVisualizer;
+use crate::pages::merge_visualizer::{MergeVisualizer, MergePaneFocus};
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 
@@ -39,7 +39,23 @@ impl Screen {
         }
     }
 
-    pub fn render(&self, frame: &mut Frame, mode: AppMode, status: &str, store: &FakeStore, selected_project: usize, selected_change: usize, commit_msg: &str, menu_selected_index: usize, focus: Focus) {
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        mode: AppMode,
+        status: &str,
+        store: &FakeStore,
+        selected_project: usize,
+        selected_change: usize,
+        commit_msg: &str,
+        menu_selected_index: usize,
+        _focus: Focus,
+        selected_board_column: usize,
+        selected_board_item: usize,
+        merge_file_index: usize,
+        merge_focus: MergePaneFocus,
+        selected_setting: usize,
+    ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
             .bold()
@@ -84,12 +100,15 @@ impl Screen {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj { self.changes.render(frame, content_area, p, selected_change, commit_msg); }
             }
-            AppMode::MergeVisualizer => self.merge.render(frame, content_area),
+            AppMode::MergeVisualizer => {
+                let proj = store.projects.get(selected_project);
+                if let Some(p) = proj { self.merge.render(frame, content_area, p, merge_file_index, merge_focus); }
+            }
             AppMode::ProjectBoard => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.board.render(frame, content_area, p); }
+                if let Some(p) = proj { self.board.render(frame, content_area, p, selected_board_column, selected_board_item); }
             }
-            AppMode::Settings => self.settings.render(frame, content_area),
+            AppMode::Settings => self.settings.render(frame, content_area, selected_setting),
         }
 
         // Render the status bar on bottom

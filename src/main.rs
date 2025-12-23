@@ -1,10 +1,12 @@
 use ratatui::{DefaultTerminal, Frame};
 
-pub mod key_handler;
-pub mod screen;
-pub mod pages;
 pub mod data;
+pub mod key_handler;
+pub mod pages;
+pub mod screen;
+use data::ModuleStatus;
 use key_handler::{KeyAction, KeyHandler};
+use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +38,11 @@ pub struct App {
     selected_project_index: usize,
     selected_change_index: usize,
     commit_message: String,
+    selected_board_column: usize,
+    selected_board_item: usize,
+    selected_merge_file_index: usize,
+    merge_focus: MergePaneFocus,
+    selected_setting_index: usize,
 }
 
 impl App {
@@ -54,6 +61,11 @@ impl App {
             selected_project_index: 0,
             selected_change_index: 0,
             commit_message: String::new(),
+            selected_board_column: 1,
+            selected_board_item: 0,
+            selected_merge_file_index: 0,
+            merge_focus: MergePaneFocus::Files,
+            selected_setting_index: 0,
         }
     }
 
@@ -80,7 +92,66 @@ impl App {
             &self.commit_message,
             self.menu_selected_index,
             self.focus,
+            self.selected_board_column,
+            self.selected_board_item,
+            self.selected_merge_file_index,
+            self.merge_focus,
+            self.selected_setting_index,
         );
+    }
+
+    fn board_column_len(&self, column: usize) -> usize {
+        let status = match column {
+            0 => ModuleStatus::Pending,
+            1 => ModuleStatus::Current,
+            _ => ModuleStatus::Completed,
+        };
+
+        self.store
+            .projects
+            .get(self.selected_project_index)
+            .map(|p| p.modules.iter().filter(|m| m.status == status).count())
+            .unwrap_or(0)
+    }
+
+    fn update_status_message(&mut self) {
+        self.status_message = match self.current_view {
+            AppMode::Dashboard => format!(
+                "Project: {} (↑↓ Select, ↵ Open)",
+                self.store
+                    .projects
+                    .get(self.selected_project_index)
+                    .map(|p| &p.name)
+                    .unwrap_or(&"N/A".to_string())
+            ),
+            AppMode::Changes => format!(
+                "Changes: {} (↑↓ Select file, ↵ Commit)",
+                self.store
+                    .projects
+                    .get(self.selected_project_index)
+                    .and_then(|p| p.changes.get(self.selected_change_index))
+                    .map(|c| &c.path)
+                    .unwrap_or(&"N/A".to_string())
+            ),
+            AppMode::ProjectBoard => format!(
+                "Board: {} (←→ Column, ↑↓ Item)",
+                ["Pending", "Current", "Completed"][self.selected_board_column]
+            ),
+            AppMode::MergeVisualizer => format!(
+                "Merge: {} (←→ Pane, ↑↓ File)",
+                ["Files", "Local", "Incoming"][match self.merge_focus {
+                    MergePaneFocus::Files => 0,
+                    MergePaneFocus::Local => 1,
+                    MergePaneFocus::Incoming => 2,
+                }]
+            ),
+            AppMode::Settings => format!(
+                "Settings: {} (↑↓ Select)",
+                crate::pages::settings::SETTINGS_OPTIONS
+                    .get(self.selected_setting_index)
+                    .unwrap_or(&"N/A")
+            ),
+        };
     }
 
     fn handle_action(&mut self, action: KeyAction) -> bool {
@@ -91,7 +162,7 @@ impl App {
                     return true; // Exit from main menu
                 }
                 self.focus = Focus::Menu;
-                self.status_message = "Back to menu".to_string();
+                self.status_message = "Menu: Tab to navigate, ↵ to select, q to quit".to_string();
                 false
             }
             KeyAction::NextView => {
@@ -103,16 +174,19 @@ impl App {
                     // Tab cycles views (but only when in View focus)
                     self.prev_view = self.current_view;
                     self.current_view = self.current_view.next();
-                    self.status_message = format!("View: {:?}", self.current_view);
                     // Sync menu selection to current view
                     self.menu_selected_index = self.current_view.menu_index();
+                    self.update_status_message();
                 }
                 false
             }
             KeyAction::Select => {
                 if self.focus == Focus::Menu {
                     // Enter on menu switches to that view
-                    if let Some(item) = self.screen.get_selected_menu_item_by_index(self.menu_selected_index) {
+                    if let Some(item) = self
+                        .screen
+                        .get_selected_menu_item_by_index(self.menu_selected_index)
+                    {
                         match item {
                             "Dashboard" => self.current_view = AppMode::Dashboard,
                             "Changes" => self.current_view = AppMode::Changes,
@@ -124,12 +198,14 @@ impl App {
                         }
                     }
                     self.focus = Focus::View;
-                    self.status_message = format!("View: {:?}", self.current_view);
+                    self.update_status_message();
                 } else if matches!(self.current_view, AppMode::Changes) {
                     // Enter on Changes view commits
-                    self.store.bump_progress_on_commit(self.selected_project_index);
-                    self.status_message = format!("Committed: {}", self.commit_message);
+                    self.store
+                        .bump_progress_on_commit(self.selected_project_index);
+                    self.status_message = format!("✓ Committed: {}", self.commit_message);
                     self.commit_message.clear();
+                    self.update_status_message();
                 }
                 false
             }
@@ -142,13 +218,37 @@ impl App {
                 } else {
                     match self.current_view {
                         AppMode::Dashboard => {
-                            if self.selected_project_index > 0 { self.selected_project_index -= 1; }
+                            if self.selected_project_index > 0 {
+                                self.selected_project_index -= 1;
+                            }
                         }
                         AppMode::Changes => {
-                            if self.selected_change_index > 0 { self.selected_change_index -= 1; }
+                            if self.selected_change_index > 0 {
+                                self.selected_change_index -= 1;
+                            }
                         }
-                        _ => {}
+                        AppMode::ProjectBoard => {
+                            let len = self.board_column_len(self.selected_board_column);
+                            if len == 0 {
+                                self.selected_board_item = 0;
+                            } else if self.selected_board_item > 0 {
+                                self.selected_board_item -= 1;
+                            } else {
+                                self.selected_board_item = len - 1;
+                            }
+                        }
+                        AppMode::MergeVisualizer => {
+                            if self.selected_merge_file_index > 0 {
+                                self.selected_merge_file_index -= 1;
+                            }
+                        }
+                        AppMode::Settings => {
+                            if self.selected_setting_index > 0 {
+                                self.selected_setting_index -= 1;
+                            }
+                        }
                     }
+                    self.update_status_message();
                 }
                 false
             }
@@ -162,7 +262,9 @@ impl App {
                     match self.current_view {
                         AppMode::Dashboard => {
                             let max = self.store.projects.len().saturating_sub(1);
-                            if self.selected_project_index < max { self.selected_project_index += 1; }
+                            if self.selected_project_index < max {
+                                self.selected_project_index += 1;
+                            }
                         }
                         AppMode::Changes => {
                             let max = self
@@ -171,10 +273,85 @@ impl App {
                                 .get(self.selected_project_index)
                                 .map(|p| p.changes.len().saturating_sub(1))
                                 .unwrap_or(0);
-                            if self.selected_change_index < max { self.selected_change_index += 1; }
+                            if self.selected_change_index < max {
+                                self.selected_change_index += 1;
+                            }
+                        }
+                        AppMode::ProjectBoard => {
+                            let len = self.board_column_len(self.selected_board_column);
+                            if len == 0 {
+                                self.selected_board_item = 0;
+                            } else if self.selected_board_item < len.saturating_sub(1) {
+                                self.selected_board_item += 1;
+                            }
+                        }
+                        AppMode::MergeVisualizer => {
+                            let max = self
+                                .store
+                                .projects
+                                .get(self.selected_project_index)
+                                .map(|p| p.changes.len().saturating_sub(1))
+                                .unwrap_or(0);
+                            if self.selected_merge_file_index < max {
+                                self.selected_merge_file_index += 1;
+                            }
+                        }
+                        AppMode::Settings => {
+                            let max = crate::pages::settings::SETTINGS_OPTIONS
+                                .len()
+                                .saturating_sub(1);
+                            if self.selected_setting_index < max {
+                                self.selected_setting_index += 1;
+                            }
+                        }
+                    }
+                    self.update_status_message();
+                }
+                false
+            }
+            KeyAction::NavigateLeft => {
+                if self.focus == Focus::View {
+                    match self.current_view {
+                        AppMode::ProjectBoard => {
+                            if self.selected_board_column == 0 {
+                                self.selected_board_column = 2;
+                            } else {
+                                self.selected_board_column -= 1;
+                            }
+                            let len = self.board_column_len(self.selected_board_column);
+                            self.selected_board_item = if len == 0 {
+                                0
+                            } else {
+                                self.selected_board_item.min(len - 1)
+                            };
+                        }
+                        AppMode::MergeVisualizer => {
+                            self.merge_focus = self.merge_focus.prev();
                         }
                         _ => {}
                     }
+                    self.update_status_message();
+                }
+                false
+            }
+            KeyAction::NavigateRight => {
+                if self.focus == Focus::View {
+                    match self.current_view {
+                        AppMode::ProjectBoard => {
+                            self.selected_board_column = (self.selected_board_column + 1) % 3;
+                            let len = self.board_column_len(self.selected_board_column);
+                            self.selected_board_item = if len == 0 {
+                                0
+                            } else {
+                                self.selected_board_item.min(len - 1)
+                            };
+                        }
+                        AppMode::MergeVisualizer => {
+                            self.merge_focus = self.merge_focus.next();
+                        }
+                        _ => {}
+                    }
+                    self.update_status_message();
                 }
                 false
             }
