@@ -59,6 +59,9 @@ impl Screen {
         merge_focus: MergePaneFocus,
         selected_setting: usize,
         show_help: bool,
+        project_scroll: usize,
+        changes_scroll: usize,
+        merge_scroll: usize,
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -99,22 +102,37 @@ impl Screen {
 
         // Render the content page based on mode
         match mode {
-            AppMode::Dashboard => {
-                self.dashborard
-                    .render(frame, content_area, &store.projects, selected_project)
-            }
+            AppMode::Dashboard => self.dashborard.render(
+                frame,
+                content_area,
+                &store.projects,
+                selected_project,
+                project_scroll,
+            ),
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.changes
-                        .render(frame, content_area, p, selected_change, commit_msg);
+                    self.changes.render(
+                        frame,
+                        content_area,
+                        p,
+                        selected_change,
+                        commit_msg,
+                        changes_scroll,
+                    );
                 }
             }
             AppMode::MergeVisualizer => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.merge
-                        .render(frame, content_area, p, merge_file_index, merge_focus);
+                    self.merge.render(
+                        frame,
+                        content_area,
+                        p,
+                        merge_file_index,
+                        merge_focus,
+                        merge_scroll,
+                    );
                 }
             }
             AppMode::ProjectBoard => {
@@ -126,10 +144,14 @@ impl Screen {
                         p,
                         selected_board_column,
                         selected_board_item,
+                        project_scroll,
                     );
                 }
             }
-            AppMode::Settings => self.settings.render(frame, content_area, selected_setting),
+            AppMode::Settings => {
+                self.settings
+                    .render(frame, content_area, selected_setting, project_scroll)
+            }
         }
 
         // Render the status bar on bottom

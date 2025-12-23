@@ -21,6 +21,7 @@ impl ProjectBoard {
         project: &Project,
         selected_column: usize,
         selected_item: usize,
+        scroll: usize,
     ) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -51,9 +52,9 @@ impl ProjectBoard {
         let current_items = mk(ModuleStatus::Current);
         let done_items = mk(ModuleStatus::Completed);
 
-        let mut pending_state = ListState::default();
-        let mut current_state = ListState::default();
-        let mut done_state = ListState::default();
+        let mut pending_state = ListState::default().with_offset(scroll);
+        let mut current_state = ListState::default().with_offset(scroll);
+        let mut done_state = ListState::default().with_offset(scroll);
 
         if selected_column == 0 {
             if !pending_items.is_empty() {

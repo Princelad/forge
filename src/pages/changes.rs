@@ -21,6 +21,7 @@ impl ChangesPage {
         project: &Project,
         selected: usize,
         commit_msg: &str,
+        scroll: usize,
     ) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
@@ -38,7 +39,9 @@ impl ChangesPage {
             .iter()
             .map(|c| ListItem::new(Self::fmt_change(c)))
             .collect();
-        let mut state = ListState::default().with_selected(Some(selected));
+        let mut state = ListState::default()
+            .with_selected(Some(selected))
+            .with_offset(scroll);
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title(format!("Branch: {}", project.branch)))

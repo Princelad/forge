@@ -9,18 +9,20 @@ impl Dashboard {
         Self
     }
 
-    pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[Project], selected: usize) {
+    pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[Project], selected: usize, scroll: usize) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(32), Constraint::Min(0)])
             .split(area);
 
-        // Left: project list
+        // Left: project list with scrolling
         let items: Vec<ListItem> = projects
             .iter()
             .map(|p| ListItem::new(p.name.clone()))
             .collect();
-        let mut state = ListState::default().with_selected(Some(selected));
+        let mut state = ListState::default()
+            .with_selected(Some(selected))
+            .with_offset(scroll);
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title("Projects"))

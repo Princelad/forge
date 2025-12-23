@@ -44,6 +44,10 @@ pub struct App {
     merge_focus: MergePaneFocus,
     selected_setting_index: usize,
     show_help: bool,
+    // Scroll positions for list views
+    project_scroll: usize,
+    changes_scroll: usize,
+    merge_scroll: usize,
 }
 
 impl App {
@@ -68,6 +72,9 @@ impl App {
             merge_focus: MergePaneFocus::Files,
             selected_setting_index: 0,
             show_help: false,
+            project_scroll: 0,
+            changes_scroll: 0,
+            merge_scroll: 0,
         }
     }
 
@@ -100,6 +107,9 @@ impl App {
             self.merge_focus,
             self.selected_setting_index,
             self.show_help,
+            self.project_scroll,
+            self.changes_scroll,
+            self.merge_scroll,
         );
     }
 
@@ -386,6 +396,59 @@ impl App {
             KeyAction::Backspace => {
                 if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
                     self.commit_message.pop();
+                }
+                false
+            }
+            KeyAction::ScrollPageUp => {
+                if self.focus == Focus::View {
+                    match self.current_view {
+                        AppMode::Dashboard => {
+                            self.project_scroll = self.project_scroll.saturating_sub(5);
+                        }
+                        AppMode::Changes => {
+                            self.changes_scroll = self.changes_scroll.saturating_sub(5);
+                        }
+                        AppMode::MergeVisualizer => {
+                            self.merge_scroll = self.merge_scroll.saturating_sub(5);
+                        }
+                        _ => {}
+                    }
+                }
+                false
+            }
+            KeyAction::ScrollPageDown => {
+                if self.focus == Focus::View {
+                    match self.current_view {
+                        AppMode::Dashboard => {
+                            let max = self.store.projects.len();
+                            if max > 10 {
+                                self.project_scroll = (self.project_scroll + 5).min(max - 10);
+                            }
+                        }
+                        AppMode::Changes => {
+                            let max = self
+                                .store
+                                .projects
+                                .get(self.selected_project_index)
+                                .map(|p| p.changes.len())
+                                .unwrap_or(0);
+                            if max > 10 {
+                                self.changes_scroll = (self.changes_scroll + 5).min(max - 10);
+                            }
+                        }
+                        AppMode::MergeVisualizer => {
+                            let max = self
+                                .store
+                                .projects
+                                .get(self.selected_project_index)
+                                .map(|p| p.changes.len())
+                                .unwrap_or(0);
+                            if max > 10 {
+                                self.merge_scroll = (self.merge_scroll + 5).min(max - 10);
+                            }
+                        }
+                        _ => {}
+                    }
                 }
                 false
             }

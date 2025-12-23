@@ -46,6 +46,7 @@ impl MergeVisualizer {
         project: &Project,
         selected_file: usize,
         pane_focus: MergePaneFocus,
+        scroll: usize,
     ) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -63,7 +64,8 @@ impl MergeVisualizer {
             .map(|c| ListItem::new(format!("{} ({:?})", c.path, c.status)))
             .collect();
         let mut state = ListState::default()
-            .with_selected(Some(selected_file.min(file_items.len().saturating_sub(1))));
+            .with_selected(Some(selected_file.min(file_items.len().saturating_sub(1))))
+            .with_offset(scroll);
         let files_block = Block::bordered().title("Files");
         let files_block = if pane_focus == MergePaneFocus::Files {
             files_block.border_style(Style::new().yellow())
