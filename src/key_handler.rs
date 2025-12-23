@@ -10,6 +10,7 @@ pub enum KeyAction {
     NavigateLeft,
     NavigateRight,
     Select,
+    Help,
     InputChar(char),
     Backspace,
     None,
@@ -38,6 +39,7 @@ impl KeyHandler {
             (KeyModifiers::NONE, KeyCode::Esc) => KeyAction::Back,
             (_, KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => KeyAction::Quit,
+            (_, KeyCode::Char('?')) => KeyAction::Help,
             (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
             (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k')) => KeyAction::NavigateUp,
             (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,

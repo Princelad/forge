@@ -6,14 +6,15 @@ use ratatui::{
     widgets::Block,
 };
 
-use crate::key_handler::KeyAction;
 use crate::AppMode;
 use crate::Focus;
 use crate::data::FakeStore;
-use crate::pages::dashboard::Dashboard;
-use crate::pages::main_menu::MainMenu;
+use crate::key_handler::KeyAction;
 use crate::pages::changes::ChangesPage;
-use crate::pages::merge_visualizer::{MergeVisualizer, MergePaneFocus};
+use crate::pages::dashboard::Dashboard;
+use crate::pages::help::HelpPage;
+use crate::pages::main_menu::MainMenu;
+use crate::pages::merge_visualizer::{MergePaneFocus, MergeVisualizer};
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 
@@ -25,6 +26,7 @@ pub struct Screen {
     merge: MergeVisualizer,
     board: ProjectBoard,
     settings: SettingsPage,
+    help: HelpPage,
 }
 
 impl Screen {
@@ -36,6 +38,7 @@ impl Screen {
             merge: MergeVisualizer::new(),
             board: ProjectBoard::new(),
             settings: SettingsPage::new(),
+            help: HelpPage::new(),
         }
     }
 
@@ -55,6 +58,7 @@ impl Screen {
         merge_file_index: usize,
         merge_focus: MergePaneFocus,
         selected_setting: usize,
+        show_help: bool,
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -87,7 +91,7 @@ impl Screen {
                 menu_line.push(Span::raw("|"));
             }
         }
-        
+
         let content_title = Line::from(menu_line).left_aligned();
         let content_block = Block::bordered().title(content_title);
         let content_area = content_block.inner(vlayout[0]);
@@ -95,30 +99,84 @@ impl Screen {
 
         // Render the content page based on mode
         match mode {
-            AppMode::Dashboard => self.dashborard.render(frame, content_area, &store.projects, selected_project),
+            AppMode::Dashboard => {
+                self.dashborard
+                    .render(frame, content_area, &store.projects, selected_project)
+            }
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.changes.render(frame, content_area, p, selected_change, commit_msg); }
+                if let Some(p) = proj {
+                    self.changes
+                        .render(frame, content_area, p, selected_change, commit_msg);
+                }
             }
             AppMode::MergeVisualizer => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.merge.render(frame, content_area, p, merge_file_index, merge_focus); }
+                if let Some(p) = proj {
+                    self.merge
+                        .render(frame, content_area, p, merge_file_index, merge_focus);
+                }
             }
             AppMode::ProjectBoard => {
                 let proj = store.projects.get(selected_project);
-                if let Some(p) = proj { self.board.render(frame, content_area, p, selected_board_column, selected_board_item); }
+                if let Some(p) = proj {
+                    self.board.render(
+                        frame,
+                        content_area,
+                        p,
+                        selected_board_column,
+                        selected_board_item,
+                    );
+                }
             }
             AppMode::Settings => self.settings.render(frame, content_area, selected_setting),
         }
 
         // Render the status bar on bottom
         let status_line = Line::from(format!(
-            "{}  |  Tab: Switch View  Enter: Open  Esc/q: Quit",
+            "{}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
             status
         ))
         .on_dark_gray()
         .white();
         frame.render_widget(status_line, vlayout[1]);
+
+        // Render help overlay if needed
+        if show_help {
+            let popup_area = self.centered_rect(90, 90, frame.area());
+            frame.render_widget(
+                Block::bordered()
+                    .style(ratatui::style::Style::new().bg(ratatui::style::Color::Black)),
+                popup_area,
+            );
+            let inner = Block::bordered().inner(popup_area);
+            self.help.render(frame, inner);
+        }
+    }
+
+    fn centered_rect(
+        &self,
+        percent_x: u16,
+        percent_y: u16,
+        r: ratatui::layout::Rect,
+    ) -> ratatui::layout::Rect {
+        let popup_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ])
+            .split(r);
+
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ])
+            .split(popup_layout[1])[1]
     }
 
     pub fn handle_key_action(&mut self, action: KeyAction) -> bool {

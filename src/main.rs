@@ -43,6 +43,7 @@ pub struct App {
     selected_merge_file_index: usize,
     merge_focus: MergePaneFocus,
     selected_setting_index: usize,
+    show_help: bool,
 }
 
 impl App {
@@ -56,7 +57,7 @@ impl App {
             focus: Focus::View,
             menu_selected_index: 0,
             selected_project: None,
-            status_message: String::from("Ready"),
+            status_message: String::from("Ready | Press ? for help"),
             store: data::FakeStore::new(),
             selected_project_index: 0,
             selected_change_index: 0,
@@ -66,6 +67,7 @@ impl App {
             selected_merge_file_index: 0,
             merge_focus: MergePaneFocus::Files,
             selected_setting_index: 0,
+            show_help: false,
         }
     }
 
@@ -97,6 +99,7 @@ impl App {
             self.selected_merge_file_index,
             self.merge_focus,
             self.selected_setting_index,
+            self.show_help,
         );
     }
 
@@ -157,7 +160,15 @@ impl App {
     fn handle_action(&mut self, action: KeyAction) -> bool {
         match action {
             KeyAction::Quit => true,
+            KeyAction::Help => {
+                self.show_help = !self.show_help;
+                false
+            }
             KeyAction::Back => {
+                if self.show_help {
+                    self.show_help = false;
+                    return false;
+                }
                 if self.focus == Focus::Menu {
                     return true; // Exit from main menu
                 }
@@ -229,6 +240,7 @@ impl App {
                         AppMode::Dashboard => {
                             if self.selected_project_index > 0 {
                                 self.selected_project_index -= 1;
+                                self.clamp_selections_for_project();
                             }
                         }
                         AppMode::Changes => {
@@ -273,6 +285,7 @@ impl App {
                             let max = self.store.projects.len().saturating_sub(1);
                             if self.selected_project_index < max {
                                 self.selected_project_index += 1;
+                                self.clamp_selections_for_project();
                             }
                         }
                         AppMode::Changes => {
@@ -382,6 +395,22 @@ impl App {
 
     fn quit(&mut self) {
         self.running = false;
+    }
+
+    fn clamp_selections_for_project(&mut self) {
+        // When switching projects, ensure selections are valid for the new project
+        if let Some(project) = self.store.projects.get(self.selected_project_index) {
+            self.selected_change_index = self
+                .selected_change_index
+                .min(project.changes.len().saturating_sub(1));
+            self.selected_merge_file_index = self
+                .selected_merge_file_index
+                .min(project.changes.len().saturating_sub(1));
+            self.selected_board_item = self.selected_board_item.min(
+                self.board_column_len(self.selected_board_column)
+                    .saturating_sub(1),
+            );
+        }
     }
 
     fn move_board_item_to_next_status(&mut self) {
