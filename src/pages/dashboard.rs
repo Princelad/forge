@@ -1,5 +1,10 @@
-use ratatui::{Frame, layout::{Rect, Layout, Direction, Constraint}, widgets::{Block, Paragraph, List, ListItem, ListState}, style::Stylize};
 use crate::data::Project;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::Stylize,
+    widgets::{Block, List, ListItem, ListState, Paragraph},
+};
 
 #[derive(Debug)]
 pub struct Dashboard;
@@ -9,7 +14,16 @@ impl Dashboard {
         Self
     }
 
-    pub fn render(&self, frame:&mut Frame, area: Rect, projects: &[&Project], selected: usize, scroll: usize, search_active: bool, search_buffer: &str) {
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        projects: &[&Project],
+        selected: usize,
+        scroll: usize,
+        search_active: bool,
+        search_buffer: &str,
+    ) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(32), Constraint::Min(0)])
@@ -23,13 +37,13 @@ impl Dashboard {
         let mut state = ListState::default()
             .with_selected(Some(selected.min(items.len().saturating_sub(1))))
             .with_offset(scroll);
-        
+
         let title = if search_active {
             format!("Projects (search: {})", search_buffer)
         } else {
             "Projects".to_string()
         };
-        
+
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title(title))
@@ -41,16 +55,22 @@ impl Dashboard {
         );
 
         // Right: details
-        let details = projects.get(selected).map(|p| {
-            format!(
-                "Name: {}\nBranch: {}\n\nModules: {}\nDevelopers: {}\n\n{}",
-                p.name,
-                p.branch,
-                p.modules.len(),
-                p.developers.len(),
-                p.description
-            )
-        }).unwrap_or_else(|| "No project".into());
-        frame.render_widget(Paragraph::new(details).block(Block::bordered().title("Info")), cols[1]);
+        let details = projects
+            .get(selected)
+            .map(|p| {
+                format!(
+                    "Name: {}\nBranch: {}\n\nModules: {}\nDevelopers: {}\n\n{}",
+                    p.name,
+                    p.branch,
+                    p.modules.len(),
+                    p.developers.len(),
+                    p.description
+                )
+            })
+            .unwrap_or_else(|| "No project".into());
+        frame.render_widget(
+            Paragraph::new(details).block(Block::bordered().title("Info")),
+            cols[1],
+        );
     }
 }

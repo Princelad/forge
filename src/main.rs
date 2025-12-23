@@ -407,7 +407,8 @@ impl App {
                 if self.search_active {
                     // In search mode, add character to search buffer
                     self.search_buffer.push(c);
-                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
+                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes)
+                {
                     self.commit_message.push(c);
                 }
                 false
@@ -415,7 +416,8 @@ impl App {
             KeyAction::Backspace => {
                 if self.search_active {
                     self.search_buffer.pop();
-                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes) {
+                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes)
+                {
                     self.commit_message.pop();
                 }
                 false
@@ -479,7 +481,8 @@ impl App {
                     if self.search_active {
                         self.search_buffer.clear();
                         self.selected_project_index = 0;
-                        self.status_message = "Search projects (type to filter, Esc to exit)".to_string();
+                        self.status_message =
+                            "Search projects (type to filter, Esc to exit)".to_string();
                     } else {
                         self.search_buffer.clear();
                         self.update_status_message();
