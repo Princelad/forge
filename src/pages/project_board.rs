@@ -69,15 +69,15 @@ impl ProjectBoard {
             }
         }
 
-        let block_style = Style::new().reversed();
+        let block_style_focused = Style::new().yellow();
 
         frame.render_stateful_widget(
             List::new(pending_items)
                 .block(
                     Block::bordered()
                         .title("Pending")
-                        .style(if selected_column == 0 {
-                            block_style
+                        .border_style(if selected_column == 0 {
+                            block_style_focused
                         } else {
                             Style::default()
                         }),
@@ -94,8 +94,8 @@ impl ProjectBoard {
                 .block(
                     Block::bordered()
                         .title("Current")
-                        .style(if selected_column == 1 {
-                            block_style
+                        .border_style(if selected_column == 1 {
+                            block_style_focused
                         } else {
                             Style::default()
                         }),
@@ -112,8 +112,8 @@ impl ProjectBoard {
                 .block(
                     Block::bordered()
                         .title("Completed")
-                        .style(if selected_column == 2 {
-                            block_style
+                        .border_style(if selected_column == 2 {
+                            block_style_focused
                         } else {
                             Style::default()
                         }),

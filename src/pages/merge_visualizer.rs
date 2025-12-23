@@ -66,7 +66,7 @@ impl MergeVisualizer {
             .with_selected(Some(selected_file.min(file_items.len().saturating_sub(1))));
         let files_block = Block::bordered().title("Files");
         let files_block = if pane_focus == MergePaneFocus::Files {
-            files_block.style(Style::new().reversed())
+            files_block.border_style(Style::new().yellow())
         } else {
             files_block
         };
@@ -84,12 +84,12 @@ impl MergeVisualizer {
         let local_block = Block::bordered().title("Local change");
         let incoming_block = Block::bordered().title("Incoming change");
         let local_block = if pane_focus == MergePaneFocus::Local {
-            local_block.style(Style::new().reversed())
+            local_block.border_style(Style::new().yellow())
         } else {
             local_block
         };
         let incoming_block = if pane_focus == MergePaneFocus::Incoming {
-            incoming_block.style(Style::new().reversed())
+            incoming_block.border_style(Style::new().yellow())
         } else {
             incoming_block
         };
