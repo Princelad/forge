@@ -94,7 +94,9 @@ impl MergeVisualizer {
         };
         let incoming_block = match (pane_focus, accepted) {
             (MergePaneFocus::Incoming, _) => incoming_block.border_style(Style::new().yellow()),
-            (_, Some(MergePaneFocus::Incoming)) => incoming_block.border_style(Style::new().green()),
+            (_, Some(MergePaneFocus::Incoming)) => {
+                incoming_block.border_style(Style::new().green())
+            }
             _ => incoming_block,
         };
 
