@@ -65,6 +65,8 @@ impl Screen {
         search_active: bool,
         search_buffer: &str,
         filtered_projects: &[&crate::data::Project],
+        settings_options: &[String],
+        total_projects: usize,
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -113,6 +115,7 @@ impl Screen {
                 project_scroll,
                 search_active,
                 search_buffer,
+                total_projects,
             ),
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
@@ -153,10 +156,13 @@ impl Screen {
                     );
                 }
             }
-            AppMode::Settings => {
-                self.settings
-                    .render(frame, content_area, selected_setting, project_scroll)
-            }
+            AppMode::Settings => self.settings.render(
+                frame,
+                content_area,
+                selected_setting,
+                project_scroll,
+                settings_options,
+            ),
         }
 
         // Render the status bar on bottom

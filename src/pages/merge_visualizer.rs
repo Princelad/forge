@@ -96,12 +96,12 @@ impl MergeVisualizer {
             incoming_block
         };
 
-        let local_preview = "fn add(a, b) { a + b }";
-        let incoming_preview = "fn add(a, b) { a - b }";
-        frame.render_widget(Paragraph::new(local_preview).block(local_block), cols[1]);
-        frame.render_widget(
-            Paragraph::new(incoming_preview).block(incoming_block),
-            cols[2],
-        );
+        let preview = project
+            .changes
+            .get(selected_file)
+            .map(|c| c.diff_preview.as_str())
+            .unwrap_or("(no diff preview)");
+        frame.render_widget(Paragraph::new(preview).block(local_block), cols[1]);
+        frame.render_widget(Paragraph::new(preview).block(incoming_block), cols[2]);
     }
 }

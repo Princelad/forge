@@ -9,6 +9,19 @@ use key_handler::{KeyAction, KeyHandler};
 use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Default,
+    HighContrast,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct AppSettings {
+    pub theme: Theme,
+    pub notifications: bool,
+    pub autosync: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Focus {
     Menu,
@@ -29,10 +42,8 @@ pub struct App {
     screen: Screen,
     key_handler: KeyHandler,
     current_view: AppMode,
-    prev_view: AppMode,
     focus: Focus,
     menu_selected_index: usize,
-    selected_project: Option<String>,
     status_message: String,
     store: data::FakeStore,
     selected_project_index: usize,
@@ -51,6 +62,7 @@ pub struct App {
     // Search functionality
     search_active: bool,
     search_buffer: String,
+    settings: AppSettings,
 }
 
 impl App {
@@ -60,10 +72,8 @@ impl App {
             screen: Screen::new(),
             key_handler: KeyHandler::new(),
             current_view: AppMode::Dashboard,
-            prev_view: AppMode::Dashboard,
             focus: Focus::View,
             menu_selected_index: 0,
-            selected_project: None,
             status_message: String::from("Ready | Press ? for help"),
             store: data::FakeStore::new(),
             selected_project_index: 0,
@@ -80,6 +90,11 @@ impl App {
             merge_scroll: 0,
             search_active: false,
             search_buffer: String::new(),
+            settings: AppSettings {
+                theme: Theme::Default,
+                notifications: true,
+                autosync: false,
+            },
         }
     }
 
@@ -97,6 +112,7 @@ impl App {
 
     fn render(&mut self, frame: &mut Frame) {
         let filtered_projects = self.get_filtered_projects();
+        let settings_options = self.settings_options();
         self.screen.render(
             frame,
             self.current_view,
@@ -119,6 +135,8 @@ impl App {
             self.search_active,
             &self.search_buffer,
             &filtered_projects,
+            &settings_options,
+            self.store.projects.len(),
         );
     }
 
@@ -167,12 +185,14 @@ impl App {
                     MergePaneFocus::Incoming => 2,
                 }]
             ),
-            AppMode::Settings => format!(
-                "Settings: {} (↑↓ Select)",
-                crate::pages::settings::SETTINGS_OPTIONS
+            AppMode::Settings => {
+                let opts = self.settings_options();
+                let label = opts
                     .get(self.selected_setting_index)
-                    .unwrap_or(&"N/A")
-            ),
+                    .map(|s| s.as_str())
+                    .unwrap_or("N/A");
+                format!("Settings: {} (↑↓ Select, ↵ Toggle)", label)
+            }
         };
     }
 
@@ -209,7 +229,6 @@ impl App {
                     self.menu_selected_index = (self.menu_selected_index + 1) % menu_len;
                 } else {
                     // Tab cycles views (but only when in View focus)
-                    self.prev_view = self.current_view;
                     self.current_view = self.current_view.next();
                     // Sync menu selection to current view
                     self.menu_selected_index = self.current_view.menu_index();
@@ -345,9 +364,7 @@ impl App {
                             }
                         }
                         AppMode::Settings => {
-                            let max = crate::pages::settings::SETTINGS_OPTIONS
-                                .len()
-                                .saturating_sub(1);
+                            let max = self.settings_options().len().saturating_sub(1);
                             if self.selected_setting_index < max {
                                 self.selected_setting_index += 1;
                             }
@@ -566,10 +583,41 @@ impl App {
     }
 
     fn toggle_setting(&mut self) {
-        let setting = crate::pages::settings::SETTINGS_OPTIONS
-            .get(self.selected_setting_index)
-            .unwrap_or(&"");
-        self.status_message = format!("⚙ Toggled: {}", setting);
+        match self.selected_setting_index {
+            0 => {
+                // Cycle theme
+                self.settings.theme = match self.settings.theme {
+                    Theme::Default => Theme::HighContrast,
+                    Theme::HighContrast => Theme::Default,
+                };
+                self.status_message = format!(
+                    "⚙ Theme set to {}",
+                    match self.settings.theme {
+                        Theme::Default => "Default",
+                        Theme::HighContrast => "High Contrast",
+                    }
+                );
+            }
+            1 => {
+                self.settings.notifications = !self.settings.notifications;
+                self.status_message = format!(
+                    "⚙ Notifications: {}",
+                    if self.settings.notifications {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                );
+            }
+            2 => {
+                self.settings.autosync = !self.settings.autosync;
+                self.status_message = format!(
+                    "⚙ Autosync: {}",
+                    if self.settings.autosync { "On" } else { "Off" }
+                );
+            }
+            _ => {}
+        }
     }
 }
 
@@ -580,6 +628,32 @@ pub enum AppMode {
     MergeVisualizer,
     ProjectBoard,
     Settings,
+}
+
+impl App {
+    fn settings_options(&self) -> Vec<String> {
+        vec![
+            format!(
+                "Theme: {}",
+                match self.settings.theme {
+                    Theme::Default => "Default",
+                    Theme::HighContrast => "High Contrast",
+                }
+            ),
+            format!(
+                "Notifications: {}",
+                if self.settings.notifications {
+                    "On"
+                } else {
+                    "Off"
+                }
+            ),
+            format!(
+                "Autosync: {}",
+                if self.settings.autosync { "On" } else { "Off" }
+            ),
+        ]
+    }
 }
 
 impl AppMode {

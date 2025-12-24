@@ -23,6 +23,7 @@ impl Dashboard {
         scroll: usize,
         search_active: bool,
         search_buffer: &str,
+        total_count: usize,
     ) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -39,7 +40,12 @@ impl Dashboard {
             .with_offset(scroll);
 
         let title = if search_active {
-            format!("Projects (search: {})", search_buffer)
+            format!(
+                "Projects (search: {} · {}/{} matches)",
+                search_buffer,
+                projects.len(),
+                total_count
+            )
         } else {
             "Projects".to_string()
         };

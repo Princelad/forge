@@ -58,3 +58,53 @@ impl KeyHandler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_basic_keys() {
+        let mut kh = KeyHandler::new();
+
+        let quit = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('q'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(quit, KeyAction::Quit);
+
+        let help = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('?'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(help, KeyAction::Help);
+
+        let tab = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Tab,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(tab, KeyAction::NextView);
+
+        let up = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Up,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(up, KeyAction::NavigateUp);
+
+        let ch = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('x'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(ch, KeyAction::InputChar('x'));
+    }
+}

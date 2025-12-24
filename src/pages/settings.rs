@@ -5,8 +5,6 @@ use ratatui::{
     widgets::{Block, List, ListItem, ListState},
 };
 
-pub const SETTINGS_OPTIONS: [&str; 3] = ["Theme: Default", "Notifications: On", "Autosync: Off"];
-
 #[derive(Debug)]
 pub struct SettingsPage;
 
@@ -15,8 +13,15 @@ impl SettingsPage {
         Self
     }
 
-    pub fn render(&self, frame: &mut Frame, area: Rect, selected_index: usize, scroll: usize) {
-        let items: Vec<ListItem> = SETTINGS_OPTIONS.iter().map(|o| ListItem::new(*o)).collect();
+    pub fn render(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        selected_index: usize,
+        scroll: usize,
+        options: &[String],
+    ) {
+        let items: Vec<ListItem> = options.iter().map(|o| ListItem::new(o.clone())).collect();
         let mut state = ListState::default()
             .with_selected(Some(selected_index.min(items.len().saturating_sub(1))))
             .with_offset(scroll);
