@@ -47,6 +47,7 @@ impl MergeVisualizer {
         selected_file: usize,
         pane_focus: MergePaneFocus,
         scroll: usize,
+        accepted: Option<MergePaneFocus>,
     ) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -85,15 +86,16 @@ impl MergeVisualizer {
         // Local / Incoming panes
         let local_block = Block::bordered().title("Local change");
         let incoming_block = Block::bordered().title("Incoming change");
-        let local_block = if pane_focus == MergePaneFocus::Local {
-            local_block.border_style(Style::new().yellow())
-        } else {
-            local_block
+
+        let local_block = match (pane_focus, accepted) {
+            (MergePaneFocus::Local, _) => local_block.border_style(Style::new().yellow()),
+            (_, Some(MergePaneFocus::Local)) => local_block.border_style(Style::new().green()),
+            _ => local_block,
         };
-        let incoming_block = if pane_focus == MergePaneFocus::Incoming {
-            incoming_block.border_style(Style::new().yellow())
-        } else {
-            incoming_block
+        let incoming_block = match (pane_focus, accepted) {
+            (MergePaneFocus::Incoming, _) => incoming_block.border_style(Style::new().yellow()),
+            (_, Some(MergePaneFocus::Incoming)) => incoming_block.border_style(Style::new().green()),
+            _ => incoming_block,
         };
 
         let preview = project
@@ -101,7 +103,14 @@ impl MergeVisualizer {
             .get(selected_file)
             .map(|c| c.diff_preview.as_str())
             .unwrap_or("(no diff preview)");
-        frame.render_widget(Paragraph::new(preview).block(local_block), cols[1]);
-        frame.render_widget(Paragraph::new(preview).block(incoming_block), cols[2]);
+
+        let local_preview = format!("(local)\n{}", preview);
+        let incoming_preview = format!("(incoming)\n{}", preview);
+
+        frame.render_widget(Paragraph::new(local_preview).block(local_block), cols[1]);
+        frame.render_widget(
+            Paragraph::new(incoming_preview).block(incoming_block),
+            cols[2],
+        );
     }
 }

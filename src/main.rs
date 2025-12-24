@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ratatui::{DefaultTerminal, Frame};
 
 pub mod data;
@@ -63,6 +65,7 @@ pub struct App {
     search_active: bool,
     search_buffer: String,
     settings: AppSettings,
+    merge_resolutions: HashMap<(usize, usize), MergePaneFocus>,
 }
 
 impl App {
@@ -95,6 +98,7 @@ impl App {
                 notifications: true,
                 autosync: false,
             },
+            merge_resolutions: HashMap::new(),
         }
     }
 
@@ -113,6 +117,10 @@ impl App {
     fn render(&mut self, frame: &mut Frame) {
         let filtered_projects = self.get_filtered_projects();
         let settings_options = self.settings_options();
+        let accepted_merge = self
+            .merge_resolutions
+            .get(&(self.selected_project_index, self.selected_merge_file_index))
+            .copied();
         self.screen.render(
             frame,
             self.current_view,
@@ -137,6 +145,8 @@ impl App {
             &filtered_projects,
             &settings_options,
             self.store.projects.len(),
+            &self.settings,
+            accepted_merge,
         );
     }
 
@@ -230,6 +240,10 @@ impl App {
                 } else {
                     // Tab cycles views (but only when in View focus)
                     self.current_view = self.current_view.next();
+                    if !matches!(self.current_view, AppMode::Dashboard) {
+                        self.search_active = false;
+                        self.search_buffer.clear();
+                    }
                     // Sync menu selection to current view
                     self.menu_selected_index = self.current_view.menu_index();
                     self.update_status_message();
@@ -249,8 +263,11 @@ impl App {
                             "Merge" => self.current_view = AppMode::MergeVisualizer,
                             "Board" => self.current_view = AppMode::ProjectBoard,
                             "Settings" => self.current_view = AppMode::Settings,
-                            "Exit" => return true,
                             _ => {}
+                        }
+                        if !matches!(self.current_view, AppMode::Dashboard) {
+                            self.search_active = false;
+                            self.search_buffer.clear();
                         }
                     }
                     self.focus = Focus::View;
@@ -494,15 +511,19 @@ impl App {
             }
             KeyAction::Search => {
                 if self.focus == Focus::View {
-                    self.search_active = !self.search_active;
-                    if self.search_active {
-                        self.search_buffer.clear();
-                        self.selected_project_index = 0;
-                        self.status_message =
-                            "Search projects (type to filter, Esc to exit)".to_string();
+                    if !matches!(self.current_view, AppMode::Dashboard) {
+                        self.status_message = "Search is available only in Dashboard".to_string();
                     } else {
-                        self.search_buffer.clear();
-                        self.update_status_message();
+                        self.search_active = !self.search_active;
+                        if self.search_active {
+                            self.search_buffer.clear();
+                            self.selected_project_index = 0;
+                            self.status_message =
+                                "Search projects (type to filter, Esc to exit)".to_string();
+                        } else {
+                            self.search_buffer.clear();
+                            self.update_status_message();
+                        }
                     }
                 }
                 false
@@ -575,11 +596,22 @@ impl App {
     }
 
     fn accept_merge_pane(&mut self) {
-        self.status_message = match self.merge_focus {
-            MergePaneFocus::Files => "Selected file for merge".to_string(),
-            MergePaneFocus::Local => "✓ Accepted local version".to_string(),
-            MergePaneFocus::Incoming => "✓ Accepted incoming version".to_string(),
-        };
+        match self.merge_focus {
+            MergePaneFocus::Files => {
+                self.status_message = "Selected file for merge".to_string();
+            }
+            MergePaneFocus::Local | MergePaneFocus::Incoming => {
+                self.merge_resolutions.insert(
+                    (self.selected_project_index, self.selected_merge_file_index),
+                    self.merge_focus,
+                );
+                self.status_message = match self.merge_focus {
+                    MergePaneFocus::Local => "✓ Accepted local version".to_string(),
+                    MergePaneFocus::Incoming => "✓ Accepted incoming version".to_string(),
+                    _ => unreachable!(),
+                };
+            }
+        }
     }
 
     fn toggle_setting(&mut self) {

@@ -6,8 +6,6 @@ use ratatui::{
     widgets::Block,
 };
 
-use crate::AppMode;
-use crate::Focus;
 use crate::data::FakeStore;
 use crate::key_handler::KeyAction;
 use crate::pages::changes::ChangesPage;
@@ -17,6 +15,7 @@ use crate::pages::main_menu::MainMenu;
 use crate::pages::merge_visualizer::{MergePaneFocus, MergeVisualizer};
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
+use crate::{AppMode, AppSettings, Focus, Theme};
 
 #[derive(Debug)]
 pub struct Screen {
@@ -67,6 +66,8 @@ impl Screen {
         filtered_projects: &[&crate::data::Project],
         settings_options: &[String],
         total_projects: usize,
+        settings: &AppSettings,
+        accepted_merge: Option<MergePaneFocus>,
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -86,14 +87,27 @@ impl Screen {
 
         // Create menu bar for the content block header
         let mut menu_line = Vec::new();
+        let focus_style = if matches!(_focus, Focus::Menu) {
+            ratatui::style::Style::new().yellow().bold()
+        } else {
+            ratatui::style::Style::new()
+        };
+
         for (idx, item) in self.main_menu.menu_items.iter().enumerate() {
             if idx == menu_selected_index {
                 menu_line.push(Span::styled(
                     format!(" {} ", item),
-                    ratatui::style::Style::new().reversed(),
+                    ratatui::style::Style::new().reversed().patch(focus_style),
                 ));
             } else {
-                menu_line.push(Span::raw(format!(" {} ", item)));
+                menu_line.push(Span::styled(
+                    format!(" {} ", item),
+                    if matches!(_focus, Focus::Menu) {
+                        ratatui::style::Style::new().bold()
+                    } else {
+                        ratatui::style::Style::new()
+                    },
+                ));
             }
             if idx < self.main_menu.menu_items.len() - 1 {
                 menu_line.push(Span::raw("|"));
@@ -140,6 +154,7 @@ impl Screen {
                         merge_file_index,
                         merge_focus,
                         merge_scroll,
+                        accepted_merge,
                     );
                 }
             }
@@ -166,12 +181,28 @@ impl Screen {
         }
 
         // Render the status bar on bottom
+        let focus_label = match _focus {
+            Focus::Menu => "Focus: Menu",
+            Focus::View => "Focus: View",
+        };
+        let settings_badge = format!(
+            "Theme: {} | Notif: {} | Auto: {}",
+            match settings.theme {
+                Theme::Default => "Default",
+                Theme::HighContrast => "HighContrast",
+            },
+            if settings.notifications { "On" } else { "Off" },
+            if settings.autosync { "On" } else { "Off" }
+        );
+
         let status_line = Line::from(format!(
-            "{}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
-            status
-        ))
-        .on_dark_gray()
-        .white();
+            "{}  |  {}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
+            status, focus_label, settings_badge
+        ));
+        let status_line = match settings.theme {
+            Theme::HighContrast => status_line.on_yellow().black(),
+            Theme::Default => status_line.on_dark_gray().white(),
+        };
         frame.render_widget(status_line, vlayout[1]);
 
         // Render help overlay if needed

@@ -38,11 +38,14 @@ impl ProjectBoard {
                 .iter()
                 .filter(|m| m.status == status)
                 .map(|m| {
+                    let owner_name = m
+                        .owner
+                        .and_then(|oid| project.developers.iter().find(|d| d.id == oid))
+                        .map(|d| d.name.clone())
+                        .unwrap_or_else(|| "unassigned".to_string());
                     ListItem::new(format!(
                         "{} ({}) - {}%",
-                        m.name,
-                        m.owner.as_ref().map(|_| "owner").unwrap_or("unassigned"),
-                        m.progress_score
+                        m.name, owner_name, m.progress_score
                     ))
                 })
                 .collect()
