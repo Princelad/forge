@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use ratatui::{DefaultTerminal, Frame};
 
 pub mod data;
+pub mod git;
 pub mod key_handler;
 pub mod pages;
 pub mod screen;
@@ -38,7 +40,6 @@ fn main() -> color_eyre::Result<()> {
     result
 }
 
-#[derive(Debug)]
 pub struct App {
     running: bool,
     screen: Screen,
@@ -66,11 +67,13 @@ pub struct App {
     search_buffer: String,
     settings: AppSettings,
     merge_resolutions: HashMap<(usize, usize), MergePaneFocus>,
+    git_client: Option<git::GitClient>,
+    git_workdir: Option<PathBuf>,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self {
+        let mut app = Self {
             running: false,
             screen: Screen::new(),
             key_handler: KeyHandler::new(),
@@ -99,7 +102,38 @@ impl App {
                 autosync: false,
             },
             merge_resolutions: HashMap::new(),
+            git_client: None,
+            git_workdir: None,
+        };
+
+        // Attempt to discover a Git repository from the current directory
+        if let Ok(cwd) = std::env::current_dir() {
+            if let Ok(client) = git::GitClient::discover(&cwd) {
+                let workdir = client.workdir.clone();
+                let branch = client.head_branch().unwrap_or_else(|| "HEAD".into());
+                let repo_name = workdir
+                    .file_name()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "repository".into());
+
+                let changes = client.list_changes().unwrap_or_default();
+                let project = data::Project {
+                    id: uuid::Uuid::nil(),
+                    name: repo_name.clone(),
+                    description: format!("Git repo at {}", workdir.display()),
+                    branch,
+                    changes,
+                    modules: Vec::new(),
+                    developers: Vec::new(),
+                };
+                app.store.projects = vec![project];
+                app.status_message = format!("Git: loaded status from {}", workdir.display());
+                app.git_workdir = Some(workdir);
+                app.git_client = Some(client);
+            }
         }
+
+        app
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
@@ -121,6 +155,7 @@ impl App {
             .merge_resolutions
             .get(&(self.selected_project_index, self.selected_merge_file_index))
             .copied();
+        let workdir = self.git_workdir.as_deref();
         self.screen.render(
             frame,
             self.current_view,
@@ -147,6 +182,7 @@ impl App {
             self.store.projects.len(),
             &self.settings,
             accepted_merge,
+            workdir,
         );
     }
 

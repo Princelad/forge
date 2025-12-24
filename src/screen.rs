@@ -68,6 +68,7 @@ impl Screen {
         total_projects: usize,
         settings: &AppSettings,
         accepted_merge: Option<MergePaneFocus>,
+        workdir: Option<&std::path::Path>,
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -195,9 +196,13 @@ impl Screen {
             if settings.autosync { "On" } else { "Off" }
         );
 
+        let repo_badge = workdir
+            .map(|p| format!("Repo: {}", p.display()))
+            .unwrap_or_else(|| "Repo: n/a".to_string());
+
         let status_line = Line::from(format!(
-            "{}  |  {}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
-            status, focus_label, settings_badge
+            "{}  |  {}  |  {}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
+            status, focus_label, settings_badge, repo_badge
         ));
         let status_line = match settings.theme {
             Theme::HighContrast => status_line.on_yellow().black(),

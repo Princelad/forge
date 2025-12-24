@@ -12,6 +12,7 @@ ratatui = "0.29.0"
 color-eyre = "0.6.3"
 serde = "1.0.228"
 uuid = "1.19.0"
+git2 = "0.20.3"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]
