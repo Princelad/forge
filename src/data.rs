@@ -55,11 +55,26 @@ pub struct FakeStore {
 impl FakeStore {
     pub fn new() -> Self {
         // Create 5 developers
-        let alice = Developer { id: Uuid::nil(), name: "Alice Chen".into() };
-        let bob = Developer { id: Uuid::nil(), name: "Bob Smith".into() };
-        let carol = Developer { id: Uuid::nil(), name: "Carol Davis".into() };
-        let dave = Developer { id: Uuid::nil(), name: "Dave Wilson".into() };
-        let eve = Developer { id: Uuid::nil(), name: "Eve Johnson".into() };
+        let alice = Developer {
+            id: Uuid::nil(),
+            name: "Alice Chen".into(),
+        };
+        let bob = Developer {
+            id: Uuid::nil(),
+            name: "Bob Smith".into(),
+        };
+        let carol = Developer {
+            id: Uuid::nil(),
+            name: "Carol Davis".into(),
+        };
+        let dave = Developer {
+            id: Uuid::nil(),
+            name: "Dave Wilson".into(),
+        };
+        let eve = Developer {
+            id: Uuid::nil(),
+            name: "Eve Johnson".into(),
+        };
 
         let mk_change = |path: &str, status: FileStatus| Change {
             path: path.into(),
@@ -126,7 +141,13 @@ impl FakeStore {
                 mk_change("Cargo.toml", FileStatus::Modified),
             ],
             modules: modules_forge,
-            developers: vec![alice.clone(), bob.clone(), carol.clone(), dave.clone(), eve.clone()],
+            developers: vec![
+                alice.clone(),
+                bob.clone(),
+                carol.clone(),
+                dave.clone(),
+                eve.clone(),
+            ],
         };
 
         // Project 2: Atlas (active development, mid-stage)
@@ -182,7 +203,13 @@ impl FakeStore {
                 mk_change(".github/workflows/bench.yml", FileStatus::Added),
             ],
             modules: modules_atlas,
-            developers: vec![alice.clone(), bob.clone(), carol.clone(), dave.clone(), eve.clone()],
+            developers: vec![
+                alice.clone(),
+                bob.clone(),
+                carol.clone(),
+                dave.clone(),
+                eve.clone(),
+            ],
         };
 
         // Project 3: Nebula (early stage planning)
@@ -277,7 +304,10 @@ impl FakeStore {
     pub fn bump_progress_on_commit(&mut self, project_idx: usize) {
         if let Some(project) = self.projects.get_mut(project_idx) {
             // bump first Current module by 5-15, cap at 100
-            if let Some(m) = project.modules.iter_mut().find(|m| m.status == ModuleStatus::Current)
+            if let Some(m) = project
+                .modules
+                .iter_mut()
+                .find(|m| m.status == ModuleStatus::Current)
             {
                 m.progress_score = (m.progress_score.saturating_add(8)).min(100);
             }

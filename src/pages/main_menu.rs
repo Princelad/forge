@@ -5,8 +5,8 @@ use ratatui::{
     widgets::{Block, List, ListState},
 };
 
-use crate::key_handler::KeyAction;
 use crate::Focus;
+use crate::key_handler::KeyAction;
 
 #[derive(Debug)]
 pub struct MainMenu {
@@ -23,24 +23,24 @@ impl MainMenu {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, selected_index: usize, focus: Focus) {
-            let mut state = ListState::default().with_selected(Some(selected_index));
+        let mut state = ListState::default().with_selected(Some(selected_index));
 
-            let block_style = if focus == Focus::Menu {
-                Block::bordered().title("Menu").style(Style::new().green())
-            } else {
-                Block::bordered().title("Menu")
-            };
+        let block_style = if focus == Focus::Menu {
+            Block::bordered().title("Menu").style(Style::new().green())
+        } else {
+            Block::bordered().title("Menu")
+        };
 
-            frame.render_stateful_widget(
-                List::new(self.menu_items.clone())
-                    .block(block_style)
-                    .highlight_style(Style::new().reversed())
-                    .highlight_symbol(">> ")
-                    .repeat_highlight_symbol(true),
-                area,
-                &mut state,
-            );
-        }
+        frame.render_stateful_widget(
+            List::new(self.menu_items.clone())
+                .block(block_style)
+                .highlight_style(Style::new().reversed())
+                .highlight_symbol(">> ")
+                .repeat_highlight_symbol(true),
+            area,
+            &mut state,
+        );
+    }
 
     pub fn handle_key_action(&mut self, action: KeyAction) -> bool {
         match action {
