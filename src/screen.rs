@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout},
     style::Stylize,
     text::{Line, Span},
     widgets::Block,
+    Frame,
 };
 
 use crate::data::FakeStore;
@@ -20,7 +20,7 @@ use crate::{AppMode, AppSettings, Focus, Theme};
 #[derive(Debug)]
 pub struct Screen {
     main_menu: MainMenu,
-    dashborard: Dashboard,
+    dashboard: Dashboard,
     changes: ChangesPage,
     merge: MergeVisualizer,
     board: ProjectBoard,
@@ -32,7 +32,7 @@ impl Screen {
     pub fn new() -> Self {
         Self {
             main_menu: MainMenu::new(),
-            dashborard: Dashboard::new(),
+            dashboard: Dashboard::new(),
             changes: ChangesPage::new(),
             merge: MergeVisualizer::new(),
             board: ProjectBoard::new(),
@@ -122,7 +122,7 @@ impl Screen {
 
         // Render the content page based on mode
         match mode {
-            AppMode::Dashboard => self.dashborard.render(
+            AppMode::Dashboard => self.dashboard.render(
                 frame,
                 content_area,
                 filtered_projects,

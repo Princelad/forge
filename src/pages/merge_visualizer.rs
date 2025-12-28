@@ -100,14 +100,23 @@ impl MergeVisualizer {
             _ => incoming_block,
         };
 
-        let preview = project
-            .changes
-            .get(selected_file)
-            .map(|c| c.diff_preview.as_str())
-            .unwrap_or("(no diff preview)");
-
-        let local_preview = format!("(local)\n{}", preview);
-        let incoming_preview = format!("(incoming)\n{}", preview);
+        let (local_preview, incoming_preview) = match project.changes.get(selected_file) {
+            Some(c) => {
+                let local = c
+                    .local_preview
+                    .as_deref()
+                    .unwrap_or_else(|| c.diff_preview.as_str());
+                let incoming = c
+                    .incoming_preview
+                    .as_deref()
+                    .unwrap_or("(no incoming preview)");
+                (format!("(local)\n{}", local), format!("(incoming)\n{}", incoming))
+            }
+            None => (
+                "(local)\n(no diff preview)".to_string(),
+                "(incoming)\n(no diff preview)".to_string(),
+            ),
+        };
 
         frame.render_widget(Paragraph::new(local_preview).block(local_block), cols[1]);
         frame.render_widget(

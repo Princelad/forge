@@ -13,6 +13,10 @@ use key_handler::{KeyAction, KeyHandler};
 use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
 
+// UI constants
+const PAGE_SIZE: usize = 5;
+const WINDOW_SIZE: usize = 10;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
     Default,
@@ -130,6 +134,10 @@ impl App {
                 app.status_message = format!("Git: loaded status from {}", workdir.display());
                 app.git_workdir = Some(workdir);
                 app.git_client = Some(client);
+                // Load persisted progress if available
+                if let Some(wd) = app.git_workdir.as_ref() {
+                    let _ = app.store.load_progress(wd);
+                }
             }
         }
 
@@ -221,15 +229,19 @@ impl App {
             ),
             AppMode::ProjectBoard => format!(
                 "Board: {} (←→ Column, ↑↓ Item)",
-                ["Pending", "Current", "Completed"][self.selected_board_column]
+                match self.selected_board_column {
+                    0 => "Pending",
+                    1 => "Current",
+                    _ => "Completed",
+                }
             ),
             AppMode::MergeVisualizer => format!(
                 "Merge: {} (←→ Pane, ↑↓ File)",
-                ["Files", "Local", "Incoming"][match self.merge_focus {
-                    MergePaneFocus::Files => 0,
-                    MergePaneFocus::Local => 1,
-                    MergePaneFocus::Incoming => 2,
-                }]
+                match self.merge_focus {
+                    MergePaneFocus::Files => "Files",
+                    MergePaneFocus::Local => "Local",
+                    MergePaneFocus::Incoming => "Incoming",
+                }
             ),
             AppMode::Settings => {
                 let opts = self.settings_options();
@@ -309,12 +321,56 @@ impl App {
                     self.focus = Focus::View;
                     self.update_status_message();
                 } else if matches!(self.current_view, AppMode::Changes) {
-                    // Enter on Changes view commits
-                    self.store
-                        .bump_progress_on_commit(self.selected_project_index);
-                    self.status_message = format!("✓ Committed: {}", self.commit_message);
-                    self.commit_message.clear();
-                    self.update_status_message();
+                    // Enter on Changes view: perform real Git commit if repository is available
+                    let msg = self.commit_message.trim();
+                    if msg.is_empty() {
+                        self.status_message = "Commit message cannot be empty".to_string();
+                        self.update_status_message();
+                    } else if let Some(client) = &self.git_client {
+                        match client.stage_all() {
+                            Ok(()) => match client.commit_all(msg) {
+                                Ok(_oid) => {
+                                    // Refresh changes and bump progress
+                                    if let Ok(changes) = client.list_changes() {
+                                        if let Some(project) = self
+                                            .store
+                                            .projects
+                                            .get_mut(self.selected_project_index)
+                                        {
+                                            project.changes = changes;
+                                        }
+                                    }
+                                    self.store
+                                        .bump_progress_on_commit(self.selected_project_index);
+                                    self.status_message = format!("✓ Committed: {}", msg);
+                                    self.commit_message.clear();
+                                    self.update_status_message();
+                                }
+                                Err(e) => {
+                                    self.status_message = format!(
+                                        "✗ Commit failed: {}",
+                                        e
+                                    );
+                                    self.update_status_message();
+                                }
+                            },
+                            Err(e) => {
+                                self.status_message = format!("✗ Stage failed: {}", e);
+                                self.update_status_message();
+                            }
+                        }
+                    } else {
+                        // No repository; keep previous behavior but inform user
+                        self.store
+                            .bump_progress_on_commit(self.selected_project_index);
+                        self.status_message =
+                            "Committed (mock only; no Git repository detected)".to_string();
+                        if let Some(wd) = self.git_workdir.as_ref() {
+                            let _ = self.store.save_progress(wd);
+                        }
+                        self.commit_message.clear();
+                        self.update_status_message();
+                    }
                 } else if matches!(self.current_view, AppMode::ProjectBoard) {
                     // Enter on Board moves item to next column
                     self.move_board_item_to_next_status();
@@ -496,13 +552,13 @@ impl App {
                 if self.focus == Focus::View {
                     match self.current_view {
                         AppMode::Dashboard => {
-                            self.project_scroll = self.project_scroll.saturating_sub(5);
+                            self.project_scroll = self.project_scroll.saturating_sub(PAGE_SIZE);
                         }
                         AppMode::Changes => {
-                            self.changes_scroll = self.changes_scroll.saturating_sub(5);
+                            self.changes_scroll = self.changes_scroll.saturating_sub(PAGE_SIZE);
                         }
                         AppMode::MergeVisualizer => {
-                            self.merge_scroll = self.merge_scroll.saturating_sub(5);
+                            self.merge_scroll = self.merge_scroll.saturating_sub(PAGE_SIZE);
                         }
                         _ => {}
                     }
@@ -515,7 +571,8 @@ impl App {
                         AppMode::Dashboard => {
                             let max = self.store.projects.len();
                             if max > 10 {
-                                self.project_scroll = (self.project_scroll + 5).min(max - 10);
+                                self.project_scroll =
+                                    (self.project_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
                             }
                         }
                         AppMode::Changes => {
@@ -526,7 +583,8 @@ impl App {
                                 .map(|p| p.changes.len())
                                 .unwrap_or(0);
                             if max > 10 {
-                                self.changes_scroll = (self.changes_scroll + 5).min(max - 10);
+                                self.changes_scroll =
+                                    (self.changes_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
                             }
                         }
                         AppMode::MergeVisualizer => {
@@ -537,7 +595,8 @@ impl App {
                                 .map(|p| p.changes.len())
                                 .unwrap_or(0);
                             if max > 10 {
-                                self.merge_scroll = (self.merge_scroll + 5).min(max - 10);
+                                self.merge_scroll =
+                                    (self.merge_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
                             }
                         }
                         _ => {}
