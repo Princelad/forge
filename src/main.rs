@@ -9,11 +9,12 @@ pub mod key_handler;
 pub mod pages;
 pub mod screen;
 use data::ModuleStatus;
-use key_handler::{KeyAction, KeyHandler};
+use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
 use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
 
 // UI constants
+#[allow(dead_code)]
 const PAGE_SIZE: usize = 5;
 const WINDOW_SIZE: usize = 10;
 
@@ -255,375 +256,229 @@ impl App {
     }
 
     fn handle_action(&mut self, action: KeyAction) -> bool {
-        match action {
-            KeyAction::Quit => true,
-            KeyAction::Help => {
-                self.show_help = !self.show_help;
-                false
+        // Build context for stateless processor
+        let ctx = ActionContext {
+            focus: self.focus,
+            current_view: self.current_view,
+            show_help: self.show_help,
+            search_active: self.search_active,
+            menu_selected_index: self.menu_selected_index,
+            selected_project_index: self.selected_project_index,
+            selected_change_index: self.selected_change_index,
+            selected_board_column: self.selected_board_column,
+            selected_board_item: self.selected_board_item,
+            selected_merge_file_index: self.selected_merge_file_index,
+            selected_setting_index: self.selected_setting_index,
+            commit_message_empty: self.commit_message.trim().is_empty(),
+            has_git_client: self.git_client.is_some(),
+        };
+
+        // Process action (stateless)
+        let (result, update) = ActionProcessor::process(action, &ctx);
+
+        // Apply state updates
+        self.apply_action_updates(update);
+
+        // Set status if provided
+        if let Some(msg) = result.status_message {
+            self.status_message = msg;
+            self.update_status_message(); // Will be overwritten only if msg is generic
+        } else {
+            self.update_status_message();
+        }
+
+        result.should_quit
+    }
+
+    fn apply_action_updates(&mut self, update: ActionStateUpdate) {
+        // Apply all optional state updates
+        if let Some(focus) = update.focus {
+            self.focus = focus;
+        }
+        if let Some(view) = update.current_view {
+            self.current_view = view;
+        }
+        if let Some(help) = update.show_help {
+            self.show_help = help;
+        }
+        if let Some(search) = update.search_active {
+            self.search_active = search;
+        }
+        if let Some(buf) = update.search_buffer {
+            self.search_buffer = buf;
+        }
+        if let Some(c) = update.search_buffer_append {
+            self.search_buffer.push(c);
+        }
+        if update.search_buffer_pop.is_some() {
+            self.search_buffer.pop();
+        }
+        if let Some(idx) = update.menu_selected_index {
+            self.menu_selected_index = idx;
+        }
+        if let Some(idx) = update.selected_project_index {
+            self.selected_project_index = idx;
+        }
+        if let Some(idx) = update.selected_change_index {
+            self.selected_change_index = idx;
+        }
+        if let Some(idx) = update.selected_board_column {
+            self.selected_board_column = idx;
+        }
+        if let Some(idx) = update.selected_board_item {
+            self.selected_board_item = idx;
+        }
+        if let Some(idx) = update.selected_merge_file_index {
+            self.selected_merge_file_index = idx;
+        }
+        if let Some(idx) = update.selected_setting_index {
+            self.selected_setting_index = idx;
+        }
+        if let Some(c) = update.commit_message_append {
+            self.commit_message.push(c);
+        }
+        if update.commit_message_pop.is_some() {
+            self.commit_message.pop();
+        }
+        if update.commit_message_clear.is_some() {
+            self.commit_message.clear();
+        }
+        if let Some(amount) = update.project_scroll_up {
+            self.project_scroll = self.project_scroll.saturating_sub(amount);
+        }
+        if let Some(amount) = update.project_scroll_down {
+            let max = self.store.projects.len();
+            if max > WINDOW_SIZE {
+                self.project_scroll = (self.project_scroll + amount).min(max - WINDOW_SIZE);
             }
-            KeyAction::Back => {
-                if self.show_help {
-                    self.show_help = false;
-                    return false;
-                }
-                if self.search_active {
-                    self.search_active = false;
-                    self.search_buffer.clear();
-                    self.selected_project_index = 0;
-                    self.update_status_message();
-                    return false;
-                }
-                if self.focus == Focus::Menu {
-                    return true; // Exit from main menu
-                }
-                self.focus = Focus::Menu;
-                self.status_message = "Menu: Tab to navigate, ↵ to select, q to quit".to_string();
-                false
+        }
+        if let Some(amount) = update.changes_scroll_up {
+            self.changes_scroll = self.changes_scroll.saturating_sub(amount);
+        }
+        if let Some(amount) = update.changes_scroll_down {
+            let max = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.changes.len())
+                .unwrap_or(0);
+            if max > WINDOW_SIZE {
+                self.changes_scroll = (self.changes_scroll + amount).min(max - WINDOW_SIZE);
             }
-            KeyAction::NextView => {
-                if self.focus == Focus::Menu {
-                    // Tab cycles menu items
-                    let menu_len = self.screen.get_menu_items_count();
-                    self.menu_selected_index = (self.menu_selected_index + 1) % menu_len;
-                } else {
-                    // Tab cycles views (but only when in View focus)
-                    self.current_view = self.current_view.next();
-                    if !matches!(self.current_view, AppMode::Dashboard) {
-                        self.search_active = false;
-                        self.search_buffer.clear();
-                    }
-                    // Sync menu selection to current view
-                    self.menu_selected_index = self.current_view.menu_index();
-                    self.update_status_message();
-                }
-                false
+        }
+        if let Some(amount) = update.merge_scroll_up {
+            self.merge_scroll = self.merge_scroll.saturating_sub(amount);
+        }
+        if let Some(amount) = update.merge_scroll_down {
+            let max = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.changes.len())
+                .unwrap_or(0);
+            if max > WINDOW_SIZE {
+                self.merge_scroll = (self.merge_scroll + amount).min(max - WINDOW_SIZE);
             }
-            KeyAction::Select => {
-                if self.focus == Focus::Menu {
-                    // Enter on menu switches to that view
-                    if let Some(item) = self
-                        .screen
-                        .get_selected_menu_item_by_index(self.menu_selected_index)
-                    {
-                        match item {
-                            "Dashboard" => self.current_view = AppMode::Dashboard,
-                            "Changes" => self.current_view = AppMode::Changes,
-                            "Merge" => self.current_view = AppMode::MergeVisualizer,
-                            "Board" => self.current_view = AppMode::ProjectBoard,
-                            "Settings" => self.current_view = AppMode::Settings,
-                            _ => {}
-                        }
-                        if !matches!(self.current_view, AppMode::Dashboard) {
-                            self.search_active = false;
-                            self.search_buffer.clear();
-                        }
-                    }
-                    self.focus = Focus::View;
-                    self.update_status_message();
-                } else if matches!(self.current_view, AppMode::Changes) {
-                    // Enter on Changes view: perform real Git commit if repository is available
-                    let msg = self.commit_message.trim();
-                    if msg.is_empty() {
-                        self.status_message = "Commit message cannot be empty".to_string();
-                        self.update_status_message();
-                    } else if let Some(client) = &self.git_client {
-                        match client.stage_all() {
-                            Ok(()) => match client.commit_all(msg) {
-                                Ok(_oid) => {
-                                    // Refresh changes and bump progress
-                                    if let Ok(changes) = client.list_changes() {
-                                        if let Some(project) = self
-                                            .store
-                                            .projects
-                                            .get_mut(self.selected_project_index)
-                                        {
-                                            project.changes = changes;
-                                        }
-                                    }
-                                    self.store
-                                        .bump_progress_on_commit(self.selected_project_index);
-                                    self.status_message = format!("✓ Committed: {}", msg);
-                                    self.commit_message.clear();
-                                    self.update_status_message();
-                                }
-                                Err(e) => {
-                                    self.status_message = format!(
-                                        "✗ Commit failed: {}",
-                                        e
-                                    );
-                                    self.update_status_message();
-                                }
-                            },
-                            Err(e) => {
-                                self.status_message = format!("✗ Stage failed: {}", e);
-                                self.update_status_message();
-                            }
-                        }
-                    } else {
-                        // No repository; keep previous behavior but inform user
-                        self.store
-                            .bump_progress_on_commit(self.selected_project_index);
-                        self.status_message =
-                            "Committed (mock only; no Git repository detected)".to_string();
-                        if let Some(wd) = self.git_workdir.as_ref() {
-                            let _ = self.store.save_progress(wd);
-                        }
-                        self.commit_message.clear();
-                        self.update_status_message();
-                    }
-                } else if matches!(self.current_view, AppMode::ProjectBoard) {
-                    // Enter on Board moves item to next column
-                    self.move_board_item_to_next_status();
-                } else if matches!(self.current_view, AppMode::MergeVisualizer) {
-                    // Enter on Merge accepts current pane's version
-                    self.accept_merge_pane();
-                } else if matches!(self.current_view, AppMode::Settings) {
-                    // Enter on Settings toggles setting
-                    self.toggle_setting();
-                }
-                false
+        }
+
+        // Complex navigation handlers
+        if update.clamp_selections.is_some() {
+            self.clamp_selections_for_project();
+        }
+        if update.navigate_project_down.is_some() {
+            let max = self.store.projects.len().saturating_sub(1);
+            if self.selected_project_index < max {
+                self.selected_project_index += 1;
+                self.clamp_selections_for_project();
             }
-            // Navigation within views
-            KeyAction::NavigateUp => {
-                if self.focus == Focus::Menu {
-                    if self.menu_selected_index > 0 {
-                        self.menu_selected_index -= 1;
-                    }
-                } else {
-                    match self.current_view {
-                        AppMode::Dashboard => {
-                            if self.selected_project_index > 0 {
-                                self.selected_project_index -= 1;
-                                self.clamp_selections_for_project();
-                            }
-                        }
-                        AppMode::Changes => {
-                            if self.selected_change_index > 0 {
-                                self.selected_change_index -= 1;
-                            }
-                        }
-                        AppMode::ProjectBoard => {
-                            let len = self.board_column_len(self.selected_board_column);
-                            if len == 0 {
-                                self.selected_board_item = 0;
-                            } else if self.selected_board_item > 0 {
-                                self.selected_board_item -= 1;
-                            } else {
-                                self.selected_board_item = len - 1;
-                            }
-                        }
-                        AppMode::MergeVisualizer => {
-                            if self.selected_merge_file_index > 0 {
-                                self.selected_merge_file_index -= 1;
-                            }
-                        }
-                        AppMode::Settings => {
-                            if self.selected_setting_index > 0 {
-                                self.selected_setting_index -= 1;
-                            }
-                        }
-                    }
-                    self.update_status_message();
-                }
-                false
+        }
+        if update.navigate_change_down.is_some() {
+            let max = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.changes.len().saturating_sub(1))
+                .unwrap_or(0);
+            if self.selected_change_index < max {
+                self.selected_change_index += 1;
             }
-            KeyAction::NavigateDown => {
-                if self.focus == Focus::Menu {
-                    let menu_len = self.screen.get_menu_items_count();
-                    if self.menu_selected_index < menu_len.saturating_sub(1) {
-                        self.menu_selected_index += 1;
-                    }
-                } else {
-                    match self.current_view {
-                        AppMode::Dashboard => {
-                            let max = self.store.projects.len().saturating_sub(1);
-                            if self.selected_project_index < max {
-                                self.selected_project_index += 1;
-                                self.clamp_selections_for_project();
-                            }
-                        }
-                        AppMode::Changes => {
-                            let max = self
-                                .store
-                                .projects
-                                .get(self.selected_project_index)
-                                .map(|p| p.changes.len().saturating_sub(1))
-                                .unwrap_or(0);
-                            if self.selected_change_index < max {
-                                self.selected_change_index += 1;
-                            }
-                        }
-                        AppMode::ProjectBoard => {
-                            let len = self.board_column_len(self.selected_board_column);
-                            if len == 0 {
-                                self.selected_board_item = 0;
-                            } else if self.selected_board_item < len.saturating_sub(1) {
-                                self.selected_board_item += 1;
-                            }
-                        }
-                        AppMode::MergeVisualizer => {
-                            let max = self
-                                .store
-                                .projects
-                                .get(self.selected_project_index)
-                                .map(|p| p.changes.len().saturating_sub(1))
-                                .unwrap_or(0);
-                            if self.selected_merge_file_index < max {
-                                self.selected_merge_file_index += 1;
-                            }
-                        }
-                        AppMode::Settings => {
-                            let max = self.settings_options().len().saturating_sub(1);
-                            if self.selected_setting_index < max {
-                                self.selected_setting_index += 1;
-                            }
-                        }
-                    }
-                    self.update_status_message();
-                }
-                false
+        }
+        if update.navigate_board_up.is_some() {
+            let len = self.board_column_len(self.selected_board_column);
+            if len == 0 {
+                self.selected_board_item = 0;
+            } else if self.selected_board_item > 0 {
+                self.selected_board_item -= 1;
+            } else {
+                self.selected_board_item = len - 1;
             }
-            KeyAction::NavigateLeft => {
-                if self.focus == Focus::View {
-                    match self.current_view {
-                        AppMode::ProjectBoard => {
-                            if self.selected_board_column == 0 {
-                                self.selected_board_column = 2;
-                            } else {
-                                self.selected_board_column -= 1;
-                            }
-                            let len = self.board_column_len(self.selected_board_column);
-                            self.selected_board_item = if len == 0 {
-                                0
-                            } else {
-                                self.selected_board_item.min(len - 1)
-                            };
-                        }
-                        AppMode::MergeVisualizer => {
-                            self.merge_focus = self.merge_focus.prev();
-                        }
-                        _ => {}
-                    }
-                    self.update_status_message();
-                }
-                false
+        }
+        if update.navigate_board_down.is_some() {
+            let len = self.board_column_len(self.selected_board_column);
+            if len == 0 {
+                self.selected_board_item = 0;
+            } else if self.selected_board_item < len.saturating_sub(1) {
+                self.selected_board_item += 1;
             }
-            KeyAction::NavigateRight => {
-                if self.focus == Focus::View {
-                    match self.current_view {
-                        AppMode::ProjectBoard => {
-                            self.selected_board_column = (self.selected_board_column + 1) % 3;
-                            let len = self.board_column_len(self.selected_board_column);
-                            self.selected_board_item = if len == 0 {
-                                0
-                            } else {
-                                self.selected_board_item.min(len - 1)
-                            };
-                        }
-                        AppMode::MergeVisualizer => {
-                            self.merge_focus = self.merge_focus.next();
-                        }
-                        _ => {}
-                    }
-                    self.update_status_message();
-                }
-                false
+        }
+        if update.navigate_board_left.is_some() {
+            if self.selected_board_column == 0 {
+                self.selected_board_column = 2;
+            } else {
+                self.selected_board_column -= 1;
             }
-            KeyAction::InputChar(c) => {
-                if self.search_active {
-                    // In search mode, add character to search buffer
-                    self.search_buffer.push(c);
-                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes)
-                {
-                    self.commit_message.push(c);
-                }
-                false
+            let len = self.board_column_len(self.selected_board_column);
+            self.selected_board_item = if len == 0 {
+                0
+            } else {
+                self.selected_board_item.min(len - 1)
+            };
+        }
+        if update.navigate_board_right.is_some() {
+            self.selected_board_column = (self.selected_board_column + 1) % 3;
+            let len = self.board_column_len(self.selected_board_column);
+            self.selected_board_item = if len == 0 {
+                0
+            } else {
+                self.selected_board_item.min(len - 1)
+            };
+        }
+        if update.navigate_merge_down.is_some() {
+            let max = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.changes.len().saturating_sub(1))
+                .unwrap_or(0);
+            if self.selected_merge_file_index < max {
+                self.selected_merge_file_index += 1;
             }
-            KeyAction::Backspace => {
-                if self.search_active {
-                    self.search_buffer.pop();
-                } else if self.focus == Focus::View && matches!(self.current_view, AppMode::Changes)
-                {
-                    self.commit_message.pop();
-                }
-                false
+        }
+        if update.navigate_settings_down.is_some() {
+            let max = self.settings_options().len().saturating_sub(1);
+            if self.selected_setting_index < max {
+                self.selected_setting_index += 1;
             }
-            KeyAction::ScrollPageUp => {
-                if self.focus == Focus::View {
-                    match self.current_view {
-                        AppMode::Dashboard => {
-                            self.project_scroll = self.project_scroll.saturating_sub(PAGE_SIZE);
-                        }
-                        AppMode::Changes => {
-                            self.changes_scroll = self.changes_scroll.saturating_sub(PAGE_SIZE);
-                        }
-                        AppMode::MergeVisualizer => {
-                            self.merge_scroll = self.merge_scroll.saturating_sub(PAGE_SIZE);
-                        }
-                        _ => {}
-                    }
-                }
-                false
-            }
-            KeyAction::ScrollPageDown => {
-                if self.focus == Focus::View {
-                    match self.current_view {
-                        AppMode::Dashboard => {
-                            let max = self.store.projects.len();
-                            if max > 10 {
-                                self.project_scroll =
-                                    (self.project_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
-                            }
-                        }
-                        AppMode::Changes => {
-                            let max = self
-                                .store
-                                .projects
-                                .get(self.selected_project_index)
-                                .map(|p| p.changes.len())
-                                .unwrap_or(0);
-                            if max > 10 {
-                                self.changes_scroll =
-                                    (self.changes_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
-                            }
-                        }
-                        AppMode::MergeVisualizer => {
-                            let max = self
-                                .store
-                                .projects
-                                .get(self.selected_project_index)
-                                .map(|p| p.changes.len())
-                                .unwrap_or(0);
-                            if max > 10 {
-                                self.merge_scroll =
-                                    (self.merge_scroll + PAGE_SIZE).min(max - WINDOW_SIZE);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                false
-            }
-            KeyAction::Search => {
-                if self.focus == Focus::View {
-                    if !matches!(self.current_view, AppMode::Dashboard) {
-                        self.status_message = "Search is available only in Dashboard".to_string();
-                    } else {
-                        self.search_active = !self.search_active;
-                        if self.search_active {
-                            self.search_buffer.clear();
-                            self.selected_project_index = 0;
-                            self.status_message =
-                                "Search projects (type to filter, Esc to exit)".to_string();
-                        } else {
-                            self.search_buffer.clear();
-                            self.update_status_message();
-                        }
-                    }
-                }
-                false
-            }
-            _ => false,
+        }
+        if update.merge_focus_next.is_some() {
+            self.merge_focus = self.merge_focus.next();
+        }
+        if update.merge_focus_prev.is_some() {
+            self.merge_focus = self.merge_focus.prev();
+        }
+
+        // Action-specific handlers
+        if update.move_board_item.is_some() {
+            self.move_board_item_to_next_status();
+        }
+        if update.accept_merge_pane.is_some() {
+            self.accept_merge_pane();
+        }
+        if update.toggle_setting.is_some() {
+            self.toggle_setting();
+        }
+        if update.commit_requested.is_some() {
+            self.perform_commit();
         }
     }
 
@@ -744,6 +599,39 @@ impl App {
                 );
             }
             _ => {}
+        }
+    }
+
+    fn perform_commit(&mut self) {
+        let msg = self.commit_message.trim();
+        if let Some(client) = &self.git_client {
+            match client.stage_all() {
+                Ok(()) => match client.commit_all(msg) {
+                    Ok(_oid) => {
+                        // Refresh changes and bump progress
+                        if let Ok(changes) = client.list_changes() {
+                            if let Some(project) =
+                                self.store.projects.get_mut(self.selected_project_index)
+                            {
+                                project.changes = changes;
+                            }
+                        }
+                        self.store
+                            .bump_progress_on_commit(self.selected_project_index);
+                        self.status_message = format!("✓ Committed: {}", msg);
+                        self.commit_message.clear();
+                        if let Some(wd) = self.git_workdir.as_ref() {
+                            let _ = self.store.save_progress(wd);
+                        }
+                    }
+                    Err(e) => {
+                        self.status_message = format!("✗ Commit failed: {}", e);
+                    }
+                },
+                Err(e) => {
+                    self.status_message = format!("✗ Stage failed: {}", e);
+                }
+            }
         }
     }
 }
