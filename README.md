@@ -1,49 +1,62 @@
 # Forge
 
-**Forge** is a developer-first, terminal-based prototype for a Git-aware project management system.
-It explores how version control context and lightweight task tracking can coexist in a single workflow, without replacing Git or enforcing heavyweight project management processes.
+**Forge** is a developer-first, terminal-based Git-aware project management system.
+It integrates version control context with lightweight task tracking in a single TUI workflow, allowing developers to manage code changes, view diffs, and track project progress without leaving the terminal.
 
-This prototype focuses on **user experience, navigation, and interaction flow**, not real repository analysis or automation.
+Forge loads your current Git repository automatically and presents:
+
+- **Real file changes** from `git status`
+- **Live diff previews** for modified files
+- **Current branch** and repository metadata
+- **Project board** for task tracking (manual module management)
+- **Merge conflict visualization** with resolution tracking
+- **Configurable themes** and settings
 
 ---
 
 ## Project Objective
 
-The goal of Forge is to validate the usability of a **Git-integrated project board and change visualization system** through a **Text User Interface (TUI)**.
+Forge validates the usability of a **Git-integrated project board and change visualization system** through a **Text User Interface (TUI)**.
 
-This prototype answers one core question:
+Core question:
 
 > _Can a developer manage project context, tasks, and code changes from a single terminal interface without breaking their coding flow?_
 
 ---
 
-## Scope of This Prototype
+## Current State
 
-### Included
+### Git Integration ✅
 
-- Terminal-based UI using **Rust + ratatui**
-- Stateful menu and view navigation with focus tracking
-- Mock data for:
+- Automatic repository discovery on startup
+- Real-time file status (`git status`)
+- Diff preview generation (`git diff`)
+- Branch detection from HEAD
+- Repository metadata (path, name, branch)
 
-  - Projects
-  - Modules / tasks with ownership
-  - Assigned developers
-  - File changes (with status: modified, added, deleted)
-  - Progress simulation
+### Implemented Features
 
-- Keyboard-driven interactions (Tab, arrows, Enter, Esc)
+- Terminal-based UI using **Rust + ratatui + git2**
+- Top-bar menu navigation with focus tracking
+- Real Git repository parsing and status display
 - Multi-pane layouts for complex views
-- Commit message input and progress simulation
+- Keyboard-driven interactions (Tab, arrows, Enter, Esc)
+- Project search with live filtering (`Ctrl+F`)
+- Settings with theme switching (Default/HighContrast)
+- Merge resolution tracking with visual indicators
+- Commit message input (UI ready, commit execution pending)
+- Help overlay with keybindings (`?`)
+- Focus-aware status bar with repo/settings badges
 
-### Explicitly Excluded
+### Explicitly Not Yet Implemented
 
-- Real Git repository parsing
-- Commit history analysis
-- LOC-based metrics
-- Automation or AI
-- Networking or persistence
-
-This is **not** a production system—it is a **proof-of-concept UI and interaction prototype**.
+- Staging files and executing Git commits
+- Commit history analysis or log viewing
+- Branch switching and creation
+- Remote operations (push/pull/fetch)
+- Automated task inference from commits
+- Persistence layer for modules/developers
+- AI/ML features
 
 ---
 
@@ -69,36 +82,42 @@ This is **not** a production system—it is a **proof-of-concept UI and interact
 - Module cards display:
 
   - Module name
-  - Owner (assigned developer)
-  - Progress bar (0–100%)
+  - Owner (resolved developer name or "unassigned")
+  - Progress percentage (0–100%)
+
+- Note: Modules/developers are manually managed (not yet auto-populated from Git)
 
 ### 3. Changes Page
 
-- Left pane: List of changed files with status badges:
+- Left pane: List of changed files **from Git status** with status badges:
 
-  - `[M]` — Modified
-  - `[A]` — Added
-  - `[D]` — Deleted
+  - `Modified` — Modified files
+  - `Added` — New/untracked files
+  - `Deleted` — Deleted files
 
-- Right pane: Diff preview (mock text) for selected file
+- Right pane: **Real diff preview** from `git diff` for selected file
 - Bottom pane: Commit message input
-  - Type freely; press Enter to simulate commit
-  - Commit bumps progress on current module by 5%
-  - Status bar shows "Committed: [message]"
+  - Type freely; press Enter to commit (UI ready, execution pending)
+  - Status bar shows commit confirmation
 
 ### 4. Merge Visualizer
 
 - Three-pane layout:
 
-  - **Left**: List of changed files
-  - **Center**: Local file version (mock code)
-  - **Right**: Incoming file version (mock code)
+  - **Left**: List of changed files from Git
+  - **Center**: Local version diff preview
+  - **Right**: Incoming version diff preview
 
-- Visual concept proof for merge conflict presentation
+- Navigate between panes with Left/Right arrows
+- Accept resolution with Enter (tracks choice with green border highlight)
+- Focused pane highlighted in yellow, accepted pane in green
 
 ### 5. Settings
 
-- Placeholder view with mock configuration options
+- **Theme**: Default / High Contrast (applies to status bar styling)
+- **Notifications**: On / Off (placeholder)
+- **Autosync**: On / Off (placeholder)
+- Toggle with Enter, reflects immediately in UI
 
 ---
 
@@ -134,9 +153,12 @@ The system assists understanding—it does not make decisions for the developer.
 ## Tech Stack
 
 - **Language:** Rust (2024 edition)
-- **TUI Framework:** ratatui 0.29
-- **Terminal Backend:** crossterm 0.28
-- **State Management:** In-memory (mock state only)
+- **TUI Framework:** ratatui 0.29.0
+- **Terminal Backend:** crossterm 0.29.0
+- **Git Library:** git2 0.20.3 (libgit2 bindings)
+- **Error Handling:** color-eyre 0.6.3
+- **Other Dependencies:** serde 1.0, uuid 1.19
+- **State Management:** In-memory with Git-backed data
 - **Architecture Style:** Modular, event-driven, focus-based
 
 ---
@@ -145,21 +167,29 @@ The system assists understanding—it does not make decisions for the developer.
 
 ```
 forge/
-├── src/
-│   ├── main.rs           # App state, event loop, navigation logic
-│   ├── key_handler.rs    # Keyboard input → actions
-│   ├── screen.rs         # Screen layout & view routing
-│   ├── data.rs           # Mock data store (projects, modules, developers)
-│   ├── pages/
-│   │   ├── mod.rs
-│   │   ├── main_menu.rs  # Left sidebar menu with focus indicator
-│   │   ├── dashboard.rs  # Project list view
-│   │   ├── changes.rs    # File changes & commit input
-│   │   ├── merge_visualizer.rs  # Three-pane merge view
-│   │   ├── project_board.rs     # Kanban board
-│   │   └── settings.rs          # Settings placeholder
 ├── Cargo.toml
-└── README.md
+├── LICENSE
+├── README.md
+├── board.tldr
+├── screenshots/
+│   ├── Board.png
+│   ├── Changes.png
+│   └── Merge.png
+└── src/
+    ├── main.rs              # App entrypoint, state, event loop
+    ├── git.rs               # Git repository integration (git2 wrapper)
+    ├── key_handler.rs       # Keyboard input → actions
+    ├── screen.rs            # Screen layout & view routing
+    ├── data.rs              # Data models (Project, Module, Change, Developer)
+    └── pages/
+        ├── mod.rs
+        ├── main_menu.rs         # Top-bar menu navigation
+        ├── dashboard.rs         # Project list view with search
+        ├── changes.rs           # Git file changes & commit input
+        ├── merge_visualizer.rs  # Three-pane merge view with resolution
+        ├── project_board.rs     # Kanban board
+        ├── settings.rs          # Settings with live toggles
+        └── help.rs              # Help overlay
 ```
 
 ---
@@ -170,102 +200,106 @@ forge/
 
 The app tracks **two focus modes**:
 
-1. **Menu Focus** (starting state)
+1. **Menu Focus**
 
-   - Left pane (main menu) is active
+   - Top-bar menu is active (highlighted in yellow/bold)
    - Tab/Up/Down cycle or navigate menu items
    - Enter selects an item and switches view
-   - Border changes to green to indicate focus
+   - Status bar shows "Focus: Menu"
 
-2. **View Focus**
-   - Right pane (current view) is active
-   - Tab cycles between views
+2. **View Focus** (default starting state)
+   - Content area (current view) is active
+   - Tab cycles between views (Dashboard → Changes → Merge → Board → Settings)
    - Up/Down navigate within the current view (project list, files, etc.)
    - Esc returns focus to menu
-   - Menu selection auto-syncs to current view
+   - Menu selection auto-syncs to current view when cycling
 
 ### Keyboard Bindings
 
-| Key            | Action                                                       |
-| -------------- | ------------------------------------------------------------ |
-| `Tab`          | Cycle menu items (Menu) OR cycle views (View)                |
-| `Up` / `k`     | Navigate up in menu or view                                  |
-| `Down` / `j`   | Navigate down in menu or view                                |
-| `Left` / `h`   | Navigate left (reserved for future use)                      |
-| `Right` / `l`  | Navigate right (reserved for future use)                     |
-| `Enter`        | Select menu item and open view; OR commit message on Changes |
-| `Esc`          | Back to menu (or exit from menu)                             |
-| `q` / `Ctrl+C` | Quit immediately from any view                               |
-| Text keys      | Type commit message (on Changes view only)                   |
-| `Backspace`    | Delete character (on Changes view only)                      |
+| Key            | Action                                                    |
+| -------------- | --------------------------------------------------------- |
+| `Tab`          | Cycle menu items (Menu) OR cycle views (View)             |
+| `Up` / `k`     | Navigate up in menu or view                               |
+| `Down` / `j`   | Navigate down in menu or view                             |
+| `Left` / `h`   | Navigate left (Board columns, Merge panes)                |
+| `Right` / `l`  | Navigate right (Board columns, Merge panes)               |
+| `Enter`        | Select menu item / commit / toggle setting / accept merge |
+| `Esc`          | Back to menu / exit search / close help                   |
+| `q` / `Ctrl+C` | Quit immediately from any view                            |
+| `?`            | Toggle help overlay                                       |
+| `Ctrl+F`       | Toggle project search (Dashboard only)                    |
+| `PageUp/Down`  | Scroll long lists                                         |
+| Text keys      | Type commit message (Changes) or search query (Dashboard) |
+| `Backspace`    | Delete character in text input fields                     |
 
 ### Interaction Flow
-
 ```
 [Menu Focus - "Dashboard" highlighted]
-        ↓ (Enter)
+↓ (Enter)
 [View Focus - Dashboard view active, menu shows "Dashboard"]
-        ↓ (Tab)
+↓ (Tab)
 [View Focus - Changes view active, menu shows "Changes"]
-        ↓ (Tab again)
+↓ (Tab again)
 [View Focus - Merge view active, menu shows "Merge"]
-        ↓ (Esc)
+↓ (Esc)
 [Menu Focus - still on "Merge" in menu, can navigate with arrows]
-        ↓ (from Menu, Esc or q)
+↓ (from Menu, Esc or q)
 [Exit]
 ```
-
 ---
 
-## Mock Data
+## Data Source
 
-The app includes a `FakeStore` with:
+Forge automatically discovers and loads your **current Git repository** on startup:
 
-- **2 Projects:**
+- **Repository Discovery**: Uses `git2` to find the nearest `.git` folder
+- **Project Creation**: Generates a project from:
+  - Repository name (from folder name)
+  - Current branch (from HEAD)
+  - File changes (from `git status`)
+  - Diff previews (from `git diff`)
+- **Fallback**: If no repo found, starts with empty project list
 
-  - Forge (mock Git-aware project manager)
-  - Atlas (internal tooling demos)
-
-- **Per Project:**
-  - 3 mock Modules (Auth, Dashboard, Merge UI)
-  - Status: Pending, Current, Completed
-  - Assigned developers: Alice, Bob, Carol
-  - Progress scores: 10–100%
-  - Changed files: src/lib.rs, README.md, atlas/core.rs, etc.
-
-All data is immutable except for mock progress bumps on commit.
+**Modules and Developers** are currently **manual placeholders** (not auto-populated from Git history).
 
 ---
 
 ## Status
 
-✅ **Prototype Ready**
+✅ **Git Integration Active**
 
 ### Implemented
 
-- [x] Menu-based navigation with focus tracking
+- [x] Automatic Git repository discovery
+- [x] Real-time file status from `git status`
+- [x] Live diff preview generation from `git diff`
+- [x] Branch detection and display
+- [x] Top-bar menu navigation with focus tracking
 - [x] View switching with Tab
-- [x] Back navigation (Esc) with history
-- [x] Mock data store (projects, modules, developers, changes)
-- [x] Dashboard with project selection
-- [x] Changes page with file list & diff preview
-- [x] Kanban-style project board
-- [x] Merge visualizer (concept proof)
-- [x] Settings placeholder
-- [x] Bottom status bar with shortcuts & status messages
-- [x] Commit message input & mock progress simulation
-- [x] Menu selection sync with current view
+- [x] Dashboard with project selection and search (`Ctrl+F`)
+- [x] Changes page with real Git file list & diff preview
+- [x] Kanban-style project board (manual modules)
+- [x] Merge visualizer with resolution tracking
+- [x] Settings with live theme/notification toggles
+- [x] Help overlay (`?`)
+- [x] Status bar with focus/repo/settings badges
+- [x] Commit message input (UI ready)
+- [x] Merge resolution state tracking
+- [x] Theme switching (Default/HighContrast)
+- [x] Search with match count display
+- [x] Module owner name resolution on board
 
-### Not Implemented (Future Work)
+### In Progress / Not Yet Implemented
 
-- Real Git integration
-- Diff parsing
-- SCM hooks
-- Persistence
-- AI inference
-- Toast notifications / ephemeral messages
-- Module reassignment (keyboard interaction)
-- Scrolling within long lists
+- [ ] Git commit execution (staging + committing files)
+- [ ] Branch switching and creation
+- [ ] Commit history viewing
+- [ ] Remote operations (push/pull/fetch)
+- [ ] Multi-repo support / repo picker
+- [ ] Auto-population of modules from Git data
+- [ ] Persistence for manual modules/developers
+- [ ] Advanced merge conflict resolution
+- [ ] AI/ML inference features
 
 ---
 
@@ -275,26 +309,39 @@ All data is immutable except for mock progress bumps on commit.
 
 - Rust 1.70+
 - A terminal with UTF-8 support
+- A Git repository (Forge auto-discovers from current directory)
 
 ### Build & Run
 
 ```bash
 cd forge
+cargo build --release
 cargo run
+```
+
+Or run from any Git repository:
+
+```bash
+cd /path/to/your/git/project
+/path/to/forge/target/release/forge
 ```
 
 ### Demo Flow
 
-1. Start — Menu is focused on "Dashboard"
-2. Press `Enter` → Dashboard view opens
-3. Press `Down` → Scroll project list (if multiple projects)
-4. Press `Tab` → Switch to "Changes" view; menu syncs
-5. Type a commit message
-6. Press `Enter` → Commit simulated; progress bumped
-7. Press `Tab` again → "Project Board" view
-8. Observe progress in Current modules
-9. Press `Esc` → Return to menu
-10. Press `q` or `Esc` again → Quit
+1. **Start** — Forge discovers your Git repo and loads file changes
+2. **Dashboard** — View shows current repository with real branch/path
+3. Press `Ctrl+F` → Search projects (type to filter, Esc to exit)
+4. Press `Tab` → Switch to **Changes** view with real Git status
+5. **Navigate** files with Up/Down → See live diff preview on right
+6. Type a commit message in the bottom pane
+7. Press `Enter` → Commit prepared (execution pending implementation)
+8. Press `Tab` → **Merge Visualizer** shows files with diff previews
+9. Navigate panes with `Left`/`Right`, accept with `Enter`
+10. Press `Tab` → **Project Board** shows manual modules (if any)
+11. Press `Tab` → **Settings** to toggle theme/notifications
+12. Press `?` → Toggle help overlay
+13. Press `Esc` → Return to menu focus
+14. Press `q` or `Esc` from menu → Quit
 
 ---
 
@@ -304,13 +351,17 @@ cargo run
 
 ```rust
 pub struct App {
-    current_view: AppMode,        // Which view is visible
-    prev_view: AppMode,           // For back navigation
-    focus: Focus,                 // Menu or View
-    menu_selected_index: usize,   // Which menu item is highlighted
-    store: FakeStore,             // Mock data
-    status_message: String,       // Bottom bar text
-    // ... view-specific state (selected projects, commit msg, etc.)
+    current_view: AppMode,               // Which view is visible
+    focus: Focus,                        // Menu or View
+    menu_selected_index: usize,          // Which menu item is highlighted
+    store: FakeStore,                    // Project data (Git-backed)
+    git_client: Option<GitClient>,       // Git repository handle
+    git_workdir: Option<PathBuf>,        // Repo path
+    settings: AppSettings,               // Theme/notifications/autosync
+    merge_resolutions: HashMap<...>,     // Accepted merge decisions
+    status_message: String,              // Bottom bar text
+    search_active: bool,                 // Search mode flag
+    // ... view-specific state (selections, scrolls, commit msg, etc.)
 }
 ```
 
@@ -327,7 +378,38 @@ pub struct App {
 - Menu has different keybindings than views
 - Tab behavior changes based on focus
 - Menu selection index syncs with current view when tabbing in View focus
-- Esc always returns to menu (unless already in menu, then exits)
+- Esc returns to menu or exits search/help
+
+---
+
+## Roadmap & Future Extensions
+
+### Near-Term (Core Git Operations)
+
+- [ ] Execute Git commits (staging + commit with message)
+- [ ] Branch listing and switching
+- [ ] Commit history view with log navigation
+- [ ] Remote operations (fetch/pull/push)
+- [ ] Stash management
+- [ ] Repo picker / multi-repo support
+
+### Mid-Term (Automation & Intelligence)
+
+- [ ] Auto-populate modules from commit history
+- [ ] Commit-to-task inference
+- [ ] Progress tracking from Git activity
+- [ ] Developer assignment from Git authors
+- [ ] Semantic change analysis
+- [ ] Conflict detection and smart merge suggestions
+
+### Long-Term (Advanced Features)
+
+- [ ] Plugin-based Git provider support
+- [ ] Persistent configuration and project metadata
+- [ ] AI-assisted commit message generation
+- [ ] Code review integration
+- [ ] CI/CD pipeline status display
+- [ ] Collaborative/multiplayer features
 
 ---
 
@@ -337,18 +419,6 @@ pub struct App {
 - Project management practitioners
 - Open-source contributors
 - System design reviewers
-
----
-
-## Future Extensions (Out of Scope for Prototype)
-
-- Git repository introspection
-- Commit-to-module inference
-- Semantic change analysis
-- Progress suggestion engine
-- Plugin-based Git provider support
-- Real persistence layer
-- Multiplayer/collaborative features
 
 ---
 
