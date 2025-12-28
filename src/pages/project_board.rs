@@ -1,9 +1,9 @@
 use crate::data::{ModuleStatus, Project};
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     widgets::{Block, List, ListItem, ListState},
+    Frame,
 };
 
 #[derive(Debug)]

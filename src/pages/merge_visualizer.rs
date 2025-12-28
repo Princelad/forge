@@ -1,9 +1,9 @@
 use crate::data::Project;
 use ratatui::{
-    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     widgets::{Block, List, ListItem, ListState, Paragraph},
+    Frame,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,7 +110,10 @@ impl MergeVisualizer {
                     .incoming_preview
                     .as_deref()
                     .unwrap_or("(no incoming preview)");
-                (format!("(local)\n{}", local), format!("(incoming)\n{}", incoming))
+                (
+                    format!("(local)\n{}", local),
+                    format!("(incoming)\n{}", incoming),
+                )
             }
             None => (
                 "(local)\n(no diff preview)".to_string(),

@@ -1,12 +1,12 @@
 use ratatui::{
-    Frame,
     layout::Rect,
     style::{Style, Stylize},
     widgets::{Block, List, ListState},
+    Frame,
 };
 
-use crate::Focus;
 use crate::key_handler::KeyAction;
+use crate::Focus;
 
 #[derive(Debug)]
 pub struct MainMenu {

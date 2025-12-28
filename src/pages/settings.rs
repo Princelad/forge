@@ -1,8 +1,8 @@
 use ratatui::{
-    Frame,
     layout::Rect,
     style::{Style, Stylize},
     widgets::{Block, List, ListItem, ListState},
+    Frame,
 };
 
 #[derive(Debug)]
