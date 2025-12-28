@@ -135,6 +135,10 @@ Core question:
 
 ![Merge](screenshots/Merge.png)
 
+### Help
+
+![Help](screenshots/Help.png)
+
 ---
 
 ## Design Philosophy
