@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::Stylize,
     text::{Line, Span},
-    widgets::Block,
+    widgets::{Block, Clear},
     Frame,
 };
 
@@ -199,12 +199,14 @@ impl Screen {
         // Render help overlay if needed
         if show_help {
             let popup_area = self.centered_rect(90, 90, frame.area());
+            frame.render_widget(Clear, popup_area);
             frame.render_widget(
                 Block::bordered()
                     .style(ratatui::style::Style::new().bg(ratatui::style::Color::Black)),
                 popup_area,
             );
             let inner = Block::bordered().inner(popup_area);
+            frame.render_widget(Clear, inner);
             self.help.render(frame, inner);
         }
     }
