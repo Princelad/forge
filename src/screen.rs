@@ -182,27 +182,13 @@ impl Screen {
         }
 
         // Render the status bar on bottom
-        let focus_label = match _focus {
-            Focus::Menu => "Focus: Menu",
-            Focus::View => "Focus: View",
-        };
-        let settings_badge = format!(
-            "Theme: {} | Notif: {} | Auto: {}",
-            match settings.theme {
-                Theme::Default => "Default",
-                Theme::HighContrast => "HighContrast",
-            },
-            if settings.notifications { "On" } else { "Off" },
-            if settings.autosync { "On" } else { "Off" }
-        );
-
         let repo_badge = workdir
             .map(|p| format!("Repo: {}", p.display()))
             .unwrap_or_else(|| "Repo: n/a".to_string());
 
         let status_line = Line::from(format!(
-            "{}  |  {}  |  {}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
-            status, focus_label, settings_badge, repo_badge
+            "{}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
+            status, repo_badge
         ));
         let status_line = match settings.theme {
             Theme::HighContrast => status_line.on_yellow().black(),
