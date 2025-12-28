@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Style, Stylize},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Paragraph},
     Frame,
@@ -24,6 +24,9 @@ impl HelpPage {
                 Constraint::Min(0),
             ])
             .split(area);
+
+        // Fill the overlay to avoid a transparent background bleeding through
+        frame.render_widget(Block::default().style(Style::new().bg(Color::Black)), area);
 
         // Navigation section
         let nav_help = vec![
