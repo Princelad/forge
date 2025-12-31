@@ -1,7 +1,10 @@
+pub mod branch_manager;
 pub mod changes;
+pub mod commit_history;
 pub mod dashboard;
 pub mod help;
 pub mod main_menu;
 pub mod merge_visualizer;
+pub mod module_manager;
 pub mod project_board;
 pub mod settings;

@@ -189,4 +189,137 @@ impl GitClient {
 
         Ok(oid)
     }
+
+    /// Get list of unique committer names from repository history
+    pub fn get_committers(&self) -> Result<Vec<String>> {
+        let mut names = std::collections::HashSet::new();
+
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push_head()?;
+
+        for oid in revwalk.take(100) {
+            // Limit to last 100 commits
+            if let Ok(oid) = oid {
+                if let Ok(commit) = self.repo.find_commit(oid) {
+                    let author = commit.author();
+                    if let Some(name) = author.name() {
+                        names.insert(name.to_string());
+                    }
+                }
+            }
+        }
+
+        Ok(names.into_iter().collect())
+    }
+
+    /// List all branches (local and remote)
+    pub fn list_branches(&self, local: bool, remote: bool) -> Result<Vec<(String, bool)>> {
+        let mut branches = Vec::new();
+        let current_branch = self.head_branch().unwrap_or_default();
+
+        // List local branches
+        if local {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Local))?;
+            for branch in branch_iter {
+                if let Ok((branch, _)) = branch {
+                    if let Some(name) = branch.name()? {
+                        let is_current = name == current_branch;
+                        branches.push((name.to_string(), is_current));
+                    }
+                }
+            }
+        }
+
+        // List remote branches
+        if remote {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Remote))?;
+            for branch in branch_iter {
+                if let Ok((branch, _)) = branch {
+                    if let Some(name) = branch.name()? {
+                        branches.push((name.to_string(), false));
+                    }
+                }
+            }
+        }
+
+        Ok(branches)
+    }
+
+    /// Switch to a different branch
+    pub fn checkout_branch(&self, branch_name: &str) -> Result<()> {
+        let obj = self
+            .repo
+            .revparse_single(&format!("refs/heads/{}", branch_name))?;
+        self.repo.checkout_tree(&obj, None)?;
+        self.repo.set_head(&format!("refs/heads/{}", branch_name))?;
+        Ok(())
+    }
+
+    /// Create a new branch from current HEAD
+    pub fn create_branch(&self, branch_name: &str) -> Result<()> {
+        let head = self.repo.head()?;
+        let commit = head.peel_to_commit()?;
+        self.repo.branch(branch_name, &commit, false)?;
+        Ok(())
+    }
+
+    /// Delete a branch
+    pub fn delete_branch(&self, branch_name: &str) -> Result<()> {
+        let mut branch = self
+            .repo
+            .find_branch(branch_name, git2::BranchType::Local)?;
+        branch.delete()?;
+        Ok(())
+    }
+
+    /// Get commit history
+    pub fn get_commit_history(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<(String, String, String, String, Vec<String>)>> {
+        let mut commits = Vec::new();
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push_head()?;
+
+        for oid in revwalk.take(limit) {
+            if let Ok(oid) = oid {
+                if let Ok(commit) = self.repo.find_commit(oid) {
+                    let hash = oid.to_string();
+                    let author = commit.author().name().unwrap_or("Unknown").to_string();
+                    let time = commit.time();
+                    let date = chrono::DateTime::from_timestamp(time.seconds(), 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_else(|| "Unknown date".to_string());
+                    let message = commit.message().unwrap_or("").to_string();
+
+                    // Get files changed
+                    let mut files = Vec::new();
+                    if let Ok(tree) = commit.tree() {
+                        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+                        if let Ok(diff) =
+                            self.repo
+                                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+                        {
+                            diff.foreach(
+                                &mut |delta, _| {
+                                    if let Some(path) = delta.new_file().path() {
+                                        files.push(path.to_string_lossy().to_string());
+                                    }
+                                    true
+                                },
+                                None,
+                                None,
+                                None,
+                            )
+                            .ok();
+                        }
+                    }
+
+                    commits.push((hash, author, date, message, files));
+                }
+            }
+        }
+
+        Ok(commits)
+    }
 }

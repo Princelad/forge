@@ -66,7 +66,7 @@ impl ChangesPage {
         // Bottom: commit message input
         frame.render_widget(
             Paragraph::new(format!("Commit message: {}", commit_msg))
-                .block(Block::bordered().title("Type and press Enter to commit (mock)")),
+                .block(Block::bordered().title("Type and press Enter to commit")),
             layout[1],
         );
     }

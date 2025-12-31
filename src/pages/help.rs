@@ -123,7 +123,7 @@ impl HelpPage {
         // Tips section
         let tips = vec![
             Line::from("💡 Status bar shows contextual hints for your current view and selection"),
-            Line::from("💡 All changes are in mock data—nothing persists between sessions"),
+            Line::from("💡 Git commits are real—module progress persists to .forge/progress.json"),
             Line::from("💡 Use Tab to quickly navigate between different parts of the app"),
         ];
         frame.render_widget(

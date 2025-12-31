@@ -656,7 +656,7 @@ impl App {
                 }
             ),
             format!(
-                "Notifications: {}",
+                "Notifications: {} (placeholder)",
                 if self.settings.notifications {
                     "On"
                 } else {
@@ -664,7 +664,7 @@ impl App {
                 }
             ),
             format!(
-                "Autosync: {}",
+                "Autosync: {} (placeholder)",
                 if self.settings.autosync { "On" } else { "Off" }
             ),
         ]
