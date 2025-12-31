@@ -18,7 +18,16 @@ impl MainMenu {
     pub fn new() -> Self {
         Self {
             selected_option: 0,
-            menu_items: vec!["Dashboard", "Changes", "Merge", "Board", "Settings"],
+            menu_items: vec![
+                "Dashboard",
+                "Changes",
+                "History",
+                "Branches",
+                "Merge",
+                "Board",
+                "Modules",
+                "Settings",
+            ],
         }
     }
 

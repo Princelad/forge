@@ -10,7 +10,10 @@ pub mod pages;
 pub mod screen;
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
+use pages::branch_manager::{BranchInfo, BranchManagerMode};
+use pages::commit_history::CommitInfo;
 use pages::merge_visualizer::MergePaneFocus;
+use pages::module_manager::ModuleManagerMode;
 use screen::Screen;
 
 // UI constants
@@ -74,6 +77,23 @@ pub struct App {
     merge_resolutions: HashMap<(usize, usize), MergePaneFocus>,
     git_client: Option<git::GitClient>,
     git_workdir: Option<PathBuf>,
+    // Module manager state
+    module_manager_mode: ModuleManagerMode,
+    selected_module_index: usize,
+    selected_developer_index: usize,
+    module_input_buffer: String,
+    module_scroll: usize,
+    developer_scroll: usize,
+    // Branch manager state
+    branch_manager_mode: BranchManagerMode,
+    selected_branch_index: usize,
+    branch_input_buffer: String,
+    branch_scroll: usize,
+    cached_branches: Vec<BranchInfo>,
+    // Commit history state
+    selected_commit_index: usize,
+    commit_scroll: usize,
+    cached_commits: Vec<CommitInfo>,
 }
 
 impl App {
@@ -109,6 +129,23 @@ impl App {
             merge_resolutions: HashMap::new(),
             git_client: None,
             git_workdir: None,
+            // Initialize module manager state
+            module_manager_mode: ModuleManagerMode::ModuleList,
+            selected_module_index: 0,
+            selected_developer_index: 0,
+            module_input_buffer: String::new(),
+            module_scroll: 0,
+            developer_scroll: 0,
+            // Initialize branch manager state
+            branch_manager_mode: BranchManagerMode::List,
+            selected_branch_index: 0,
+            branch_input_buffer: String::new(),
+            branch_scroll: 0,
+            cached_branches: Vec::new(),
+            // Initialize commit history state
+            selected_commit_index: 0,
+            commit_scroll: 0,
+            cached_commits: Vec::new(),
         };
 
         // Attempt to discover a Git repository from the current directory
@@ -133,11 +170,12 @@ impl App {
                 };
                 app.store.projects = vec![project];
                 app.status_message = format!("Git: loaded status from {}", workdir.display());
-                app.git_workdir = Some(workdir);
+                app.git_workdir = Some(workdir.clone());
                 app.git_client = Some(client);
-                // Load persisted progress if available
+                // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
+                    let _ = app.store.load_from_json(wd);
                 }
             }
         }
@@ -192,6 +230,20 @@ impl App {
             &self.settings,
             accepted_merge,
             workdir,
+            // New page parameters
+            self.module_manager_mode,
+            self.selected_module_index,
+            self.selected_developer_index,
+            &self.module_input_buffer,
+            self.module_scroll,
+            self.branch_manager_mode,
+            self.selected_branch_index,
+            &self.branch_input_buffer,
+            self.branch_scroll,
+            &self.cached_branches,
+            self.selected_commit_index,
+            self.commit_scroll,
+            &self.cached_commits,
         );
     }
 
@@ -228,6 +280,14 @@ impl App {
                     .map(|c| &c.path)
                     .unwrap_or(&"N/A".to_string())
             ),
+            AppMode::CommitHistory => {
+                let count = self.cached_commits.len();
+                format!("Commit History: {} commits (↑↓ Navigate)", count)
+            }
+            AppMode::BranchManager => {
+                let count = self.cached_branches.len();
+                format!("Branches: {} (↑↓ Select, ↵ Switch, n New, d Delete)", count)
+            }
             AppMode::ProjectBoard => format!(
                 "Board: {} (←→ Column, ↑↓ Item)",
                 match self.selected_board_column {
@@ -244,6 +304,16 @@ impl App {
                     MergePaneFocus::Incoming => "Incoming",
                 }
             ),
+            AppMode::ModuleManager => {
+                let mode_str = match self.module_manager_mode {
+                    ModuleManagerMode::ModuleList => "Modules",
+                    ModuleManagerMode::DeveloperList => "Developers",
+                    ModuleManagerMode::CreateModule => "Creating Module",
+                    ModuleManagerMode::CreateDeveloper => "Creating Developer",
+                    ModuleManagerMode::EditModule => "Editing Module",
+                };
+                format!("{} (n New, d Delete, Tab Switch)", mode_str)
+            }
             AppMode::Settings => {
                 let opts = self.settings_options();
                 let label = opts
@@ -271,6 +341,13 @@ impl App {
             selected_setting_index: self.selected_setting_index,
             commit_message_empty: self.commit_message.trim().is_empty(),
             has_git_client: self.git_client.is_some(),
+            // New view context
+            selected_commit_index: self.selected_commit_index,
+            selected_branch_index: self.selected_branch_index,
+            selected_module_index: self.selected_module_index,
+            selected_developer_index: self.selected_developer_index,
+            cached_commits_len: self.cached_commits.len(),
+            cached_branches_len: self.cached_branches.len(),
         };
 
         // Process action (stateless)
@@ -296,7 +373,12 @@ impl App {
             self.focus = focus;
         }
         if let Some(view) = update.current_view {
+            let old_view = self.current_view;
             self.current_view = view;
+            // Refresh caches when entering new views
+            if old_view != view {
+                self.refresh_view_cache();
+            }
         }
         if let Some(help) = update.show_help {
             self.show_help = help;
@@ -333,6 +415,57 @@ impl App {
         }
         if let Some(idx) = update.selected_setting_index {
             self.selected_setting_index = idx;
+        }
+        // New view selections
+        if let Some(idx) = update.selected_commit_index {
+            self.selected_commit_index = idx.min(self.cached_commits.len().saturating_sub(1));
+            // Auto-scroll to keep selection visible
+            if self.selected_commit_index < self.commit_scroll {
+                self.commit_scroll = self.selected_commit_index;
+            } else if self.selected_commit_index >= self.commit_scroll + WINDOW_SIZE {
+                self.commit_scroll = self.selected_commit_index.saturating_sub(WINDOW_SIZE - 1);
+            }
+        }
+        if let Some(idx) = update.selected_branch_index {
+            self.selected_branch_index = idx.min(self.cached_branches.len().saturating_sub(1));
+            // Auto-scroll to keep selection visible
+            if self.selected_branch_index < self.branch_scroll {
+                self.branch_scroll = self.selected_branch_index;
+            } else if self.selected_branch_index >= self.branch_scroll + WINDOW_SIZE {
+                self.branch_scroll = self.selected_branch_index.saturating_sub(WINDOW_SIZE - 1);
+            }
+        }
+        if let Some(idx) = update.selected_module_index {
+            let module_count = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.modules.len())
+                .unwrap_or(0);
+            self.selected_module_index = idx.min(module_count.saturating_sub(1));
+            // Auto-scroll to keep selection visible
+            if self.selected_module_index < self.module_scroll {
+                self.module_scroll = self.selected_module_index;
+            } else if self.selected_module_index >= self.module_scroll + WINDOW_SIZE {
+                self.module_scroll = self.selected_module_index.saturating_sub(WINDOW_SIZE - 1);
+            }
+        }
+        if let Some(idx) = update.selected_developer_index {
+            let dev_count = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.developers.len())
+                .unwrap_or(0);
+            self.selected_developer_index = idx.min(dev_count.saturating_sub(1));
+            // Auto-scroll to keep selection visible
+            if self.selected_developer_index < self.developer_scroll {
+                self.developer_scroll = self.selected_developer_index;
+            } else if self.selected_developer_index >= self.developer_scroll + WINDOW_SIZE {
+                self.developer_scroll = self
+                    .selected_developer_index
+                    .saturating_sub(WINDOW_SIZE - 1);
+            }
         }
         if let Some(c) = update.commit_message_append {
             self.commit_message.push(c);
@@ -634,14 +767,66 @@ impl App {
             }
         }
     }
+
+    fn refresh_view_cache(&mut self) {
+        if let Some(client) = &self.git_client {
+            match self.current_view {
+                AppMode::BranchManager => {
+                    if let Ok(branches) = client.list_branches(true, false) {
+                        self.cached_branches = branches
+                            .into_iter()
+                            .map(|(name, is_current)| BranchInfo {
+                                name,
+                                is_current,
+                                is_remote: false,
+                            })
+                            .collect();
+                        self.selected_branch_index = 0;
+                        self.branch_scroll = 0;
+                    }
+                }
+                AppMode::CommitHistory => {
+                    if let Ok(commits) = client.get_commit_history(50) {
+                        self.cached_commits = commits
+                            .into_iter()
+                            .map(|(hash, author, date, message, files)| CommitInfo {
+                                hash,
+                                author,
+                                date,
+                                message,
+                                files_changed: files,
+                            })
+                            .collect();
+                        self.selected_commit_index = 0;
+                        self.commit_scroll = 0;
+                    }
+                }
+                AppMode::Changes => {
+                    // Refresh changes when entering the view
+                    if let Ok(changes) = client.list_changes() {
+                        if let Some(project) =
+                            self.store.projects.get_mut(self.selected_project_index)
+                        {
+                            project.changes = changes;
+                            project.branch = client.head_branch().unwrap_or_default();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AppMode {
     Dashboard,
     Changes,
+    CommitHistory,
+    BranchManager,
     MergeVisualizer,
     ProjectBoard,
+    ModuleManager,
     Settings,
 }
 
@@ -676,9 +861,12 @@ impl AppMode {
         use AppMode::*;
         match self {
             Dashboard => Changes,
-            Changes => MergeVisualizer,
+            Changes => CommitHistory,
+            CommitHistory => BranchManager,
+            BranchManager => MergeVisualizer,
             MergeVisualizer => ProjectBoard,
-            ProjectBoard => Settings,
+            ProjectBoard => ModuleManager,
+            ModuleManager => Settings,
             Settings => Dashboard,
         }
     }
@@ -687,9 +875,12 @@ impl AppMode {
         match self {
             AppMode::Dashboard => 0,
             AppMode::Changes => 1,
-            AppMode::MergeVisualizer => 2,
-            AppMode::ProjectBoard => 3,
-            AppMode::Settings => 4,
+            AppMode::CommitHistory => 2,
+            AppMode::BranchManager => 3,
+            AppMode::MergeVisualizer => 4,
+            AppMode::ProjectBoard => 5,
+            AppMode::ModuleManager => 6,
+            AppMode::Settings => 7,
         }
     }
 }

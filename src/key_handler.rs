@@ -82,6 +82,13 @@ pub struct ActionContext {
     pub selected_setting_index: usize,
     pub commit_message_empty: bool,
     pub has_git_client: bool,
+    // New view indices
+    pub selected_commit_index: usize,
+    pub selected_branch_index: usize,
+    pub selected_module_index: usize,
+    pub selected_developer_index: usize,
+    pub cached_commits_len: usize,
+    pub cached_branches_len: usize,
 }
 
 /// Stateless action processor: takes action + context, returns result + modified state
@@ -501,6 +508,26 @@ impl ActionProcessor {
                         ActionStateUpdate::none()
                     }
                 }
+                AppMode::CommitHistory => {
+                    if ctx.selected_commit_index > 0 {
+                        ActionStateUpdate {
+                            selected_commit_index: Some(ctx.selected_commit_index - 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
+                AppMode::BranchManager => {
+                    if ctx.selected_branch_index > 0 {
+                        ActionStateUpdate {
+                            selected_branch_index: Some(ctx.selected_branch_index - 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
                 AppMode::ProjectBoard => ActionStateUpdate {
                     navigate_board_up: Some(()),
                     ..Default::default()
@@ -509,6 +536,16 @@ impl ActionProcessor {
                     if ctx.selected_merge_file_index > 0 {
                         ActionStateUpdate {
                             selected_merge_file_index: Some(ctx.selected_merge_file_index - 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
+                AppMode::ModuleManager => {
+                    if ctx.selected_module_index > 0 {
+                        ActionStateUpdate {
+                            selected_module_index: Some(ctx.selected_module_index - 1),
                             ..Default::default()
                         }
                     } else {
@@ -538,7 +575,7 @@ impl ActionProcessor {
 
     fn handle_navigate_down(ctx: &ActionContext) -> (ActionResult, ActionStateUpdate) {
         if ctx.focus == Focus::Menu {
-            let next_idx = if ctx.menu_selected_index < 4 {
+            let next_idx = if ctx.menu_selected_index < 7 {
                 ctx.menu_selected_index + 1
             } else {
                 ctx.menu_selected_index
@@ -563,6 +600,26 @@ impl ActionProcessor {
                     navigate_change_down: Some(()),
                     ..Default::default()
                 },
+                AppMode::CommitHistory => {
+                    if ctx.selected_commit_index < ctx.cached_commits_len.saturating_sub(1) {
+                        ActionStateUpdate {
+                            selected_commit_index: Some(ctx.selected_commit_index + 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
+                AppMode::BranchManager => {
+                    if ctx.selected_branch_index < ctx.cached_branches_len.saturating_sub(1) {
+                        ActionStateUpdate {
+                            selected_branch_index: Some(ctx.selected_branch_index + 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
                 AppMode::ProjectBoard => ActionStateUpdate {
                     navigate_board_down: Some(()),
                     ..Default::default()
@@ -571,6 +628,14 @@ impl ActionProcessor {
                     navigate_merge_down: Some(()),
                     ..Default::default()
                 },
+                AppMode::ModuleManager => {
+                    // Get module count from context would require passing more data
+                    // For now, increment and let main.rs clamp it
+                    ActionStateUpdate {
+                        selected_module_index: Some(ctx.selected_module_index + 1),
+                        ..Default::default()
+                    }
+                }
                 AppMode::Settings => ActionStateUpdate {
                     navigate_settings_down: Some(()),
                     ..Default::default()
@@ -671,6 +736,11 @@ pub struct ActionStateUpdate {
     pub selected_board_item: Option<usize>,
     pub selected_merge_file_index: Option<usize>,
     pub selected_setting_index: Option<usize>,
+    // New view selections
+    pub selected_commit_index: Option<usize>,
+    pub selected_branch_index: Option<usize>,
+    pub selected_module_index: Option<usize>,
+    pub selected_developer_index: Option<usize>,
 
     // Commit message
     pub commit_message_append: Option<char>,

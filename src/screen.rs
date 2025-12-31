@@ -8,11 +8,14 @@ use ratatui::{
 
 use crate::data::FakeStore;
 use crate::key_handler::KeyAction;
+use crate::pages::branch_manager::{BranchInfo, BranchManager, BranchManagerMode};
 use crate::pages::changes::ChangesPage;
+use crate::pages::commit_history::{CommitHistory, CommitInfo};
 use crate::pages::dashboard::Dashboard;
 use crate::pages::help::HelpPage;
 use crate::pages::main_menu::MainMenu;
 use crate::pages::merge_visualizer::{MergePaneFocus, MergeVisualizer};
+use crate::pages::module_manager::{ModuleManager, ModuleManagerMode};
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 use crate::{AppMode, AppSettings, Focus, Theme};
@@ -22,8 +25,11 @@ pub struct Screen {
     main_menu: MainMenu,
     dashboard: Dashboard,
     changes: ChangesPage,
+    commit_history: CommitHistory,
+    branch_manager: BranchManager,
     merge: MergeVisualizer,
     board: ProjectBoard,
+    module_manager: ModuleManager,
     settings: SettingsPage,
     help: HelpPage,
 }
@@ -34,8 +40,11 @@ impl Screen {
             main_menu: MainMenu::new(),
             dashboard: Dashboard::new(),
             changes: ChangesPage::new(),
+            commit_history: CommitHistory::new(),
+            branch_manager: BranchManager::new(),
             merge: MergeVisualizer::new(),
             board: ProjectBoard::new(),
+            module_manager: ModuleManager::new(),
             settings: SettingsPage::new(),
             help: HelpPage::new(),
         }
@@ -69,6 +78,20 @@ impl Screen {
         settings: &AppSettings,
         accepted_merge: Option<MergePaneFocus>,
         workdir: Option<&std::path::Path>,
+        // New page parameters
+        module_manager_mode: ModuleManagerMode,
+        selected_module: usize,
+        selected_developer: usize,
+        module_input_buffer: &str,
+        module_scroll: usize,
+        branch_manager_mode: BranchManagerMode,
+        selected_branch: usize,
+        branch_input_buffer: &str,
+        branch_scroll: usize,
+        cached_branches: &[BranchInfo],
+        selected_commit: usize,
+        commit_scroll: usize,
+        cached_commits: &[CommitInfo],
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
@@ -145,6 +168,26 @@ impl Screen {
                     );
                 }
             }
+            AppMode::CommitHistory => {
+                self.commit_history.render(
+                    frame,
+                    content_area,
+                    cached_commits,
+                    selected_commit,
+                    commit_scroll,
+                );
+            }
+            AppMode::BranchManager => {
+                self.branch_manager.render(
+                    frame,
+                    content_area,
+                    cached_branches,
+                    selected_branch,
+                    branch_scroll,
+                    branch_manager_mode,
+                    branch_input_buffer,
+                );
+            }
             AppMode::MergeVisualizer => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
@@ -169,6 +212,21 @@ impl Screen {
                         selected_board_column,
                         selected_board_item,
                         project_scroll,
+                    );
+                }
+            }
+            AppMode::ModuleManager => {
+                let proj = store.projects.get(selected_project);
+                if let Some(p) = proj {
+                    self.module_manager.render(
+                        frame,
+                        content_area,
+                        p,
+                        module_manager_mode,
+                        selected_module,
+                        selected_developer,
+                        module_input_buffer,
+                        module_scroll,
                     );
                 }
             }
