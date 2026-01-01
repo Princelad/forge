@@ -62,10 +62,10 @@ impl GitClient {
                 .or_else(|| incoming_preview.clone())
                 .unwrap_or_else(|| "(no diff)".into());
 
-            let staged = status.is_index_new() 
-                || status.is_index_modified() 
-                || status.is_index_deleted() 
-                || status.is_index_renamed() 
+            let staged = status.is_index_new()
+                || status.is_index_modified()
+                || status.is_index_deleted()
+                || status.is_index_renamed()
                 || status.is_index_typechange();
 
             changes.push(Change {
@@ -171,20 +171,23 @@ impl GitClient {
                     // File exists in HEAD - reset to HEAD version
                     let oid = entry.id();
                     let mode = entry.filemode() as u32;
-                    index.add_frombuffer(&git2::IndexEntry {
-                        ctime: git2::IndexTime::new(0, 0),
-                        mtime: git2::IndexTime::new(0, 0),
-                        dev: 0,
-                        ino: 0,
-                        mode,
-                        uid: 0,
-                        gid: 0,
-                        file_size: 0,
-                        id: oid,
-                        flags: 0,
-                        flags_extended: 0,
-                        path: path.as_bytes().to_vec(),
-                    }, path.as_bytes())?;
+                    index.add_frombuffer(
+                        &git2::IndexEntry {
+                            ctime: git2::IndexTime::new(0, 0),
+                            mtime: git2::IndexTime::new(0, 0),
+                            dev: 0,
+                            ino: 0,
+                            mode,
+                            uid: 0,
+                            gid: 0,
+                            file_size: 0,
+                            id: oid,
+                            flags: 0,
+                            flags_extended: 0,
+                            path: path.as_bytes().to_vec(),
+                        },
+                        path.as_bytes(),
+                    )?;
                 }
                 Err(_) => {
                     // File doesn't exist in HEAD, remove from index

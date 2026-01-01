@@ -112,6 +112,7 @@ pub struct ActionContext {
     pub module_create_mode: bool,
     pub module_edit_mode: bool,
     pub developer_create_mode: bool,
+    pub module_assign_mode: bool,
     pub module_input_empty: bool,
 }
 
@@ -178,7 +179,11 @@ impl ActionProcessor {
                         },
                     );
                 }
-                if ctx.module_create_mode || ctx.module_edit_mode || ctx.developer_create_mode {
+                if ctx.module_create_mode
+                    || ctx.module_edit_mode
+                    || ctx.developer_create_mode
+                    || ctx.module_assign_mode
+                {
                     return (
                         ActionResult {
                             should_quit: false,
@@ -188,6 +193,7 @@ impl ActionProcessor {
                             module_create_mode: Some(false),
                             module_edit_mode: Some(false),
                             developer_create_mode: Some(false),
+                            module_assign_mode: Some(false),
                             module_input_clear: Some(()),
                             ..Default::default()
                         },
@@ -334,6 +340,24 @@ impl ActionProcessor {
                 {
                     // Handle module manager specific actions
                     match c {
+                        'a' if !ctx.module_create_mode
+                            && !ctx.module_edit_mode
+                            && !ctx.developer_create_mode
+                            && !ctx.module_manager_in_developer_list =>
+                        {
+                            (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: Some(
+                                        "Press ↑↓ to select developer, Enter to assign".into(),
+                                    ),
+                                },
+                                ActionStateUpdate {
+                                    module_assign_mode: Some(true),
+                                    ..Default::default()
+                                },
+                            )
+                        }
                         'n' if !ctx.module_create_mode
                             && !ctx.module_edit_mode
                             && !ctx.developer_create_mode =>
@@ -681,6 +705,19 @@ impl ActionProcessor {
                     ..Default::default()
                 },
             )
+        } else if matches!(ctx.current_view, AppMode::Dashboard) {
+            // Switch to Changes view when pressing Enter on a project
+            (
+                ActionResult {
+                    should_quit: false,
+                    status_message: Some("Switching to Changes...".into()),
+                },
+                ActionStateUpdate {
+                    current_view: Some(AppMode::Changes),
+                    menu_selected_index: Some(AppMode::Changes.menu_index()),
+                    ..Default::default()
+                },
+            )
         } else if matches!(ctx.current_view, AppMode::Changes) {
             if ctx.commit_message_empty {
                 (
@@ -787,7 +824,18 @@ impl ActionProcessor {
                 )
             }
         } else if matches!(ctx.current_view, AppMode::ModuleManager) {
-            if ctx.module_create_mode {
+            if ctx.module_assign_mode {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: Some("Assigning developer to module...".into()),
+                    },
+                    ActionStateUpdate {
+                        module_assign_requested: Some(()),
+                        ..Default::default()
+                    },
+                )
+            } else if ctx.module_create_mode {
                 if ctx.module_input_empty {
                     (
                         ActionResult {
@@ -945,7 +993,17 @@ impl ActionProcessor {
                     }
                 }
                 AppMode::ModuleManager => {
-                    if ctx.selected_module_index > 0 {
+                    if ctx.module_assign_mode {
+                        // Navigate developer list in assign mode
+                        if ctx.selected_developer_index > 0 {
+                            ActionStateUpdate {
+                                selected_developer_index: Some(ctx.selected_developer_index - 1),
+                                ..Default::default()
+                            }
+                        } else {
+                            ActionStateUpdate::none()
+                        }
+                    } else if ctx.selected_module_index > 0 {
                         ActionStateUpdate {
                             selected_module_index: Some(ctx.selected_module_index - 1),
                             ..Default::default()
@@ -1031,11 +1089,19 @@ impl ActionProcessor {
                     ..Default::default()
                 },
                 AppMode::ModuleManager => {
-                    // Get module count from context would require passing more data
-                    // For now, increment and let main.rs clamp it
-                    ActionStateUpdate {
-                        selected_module_index: Some(ctx.selected_module_index + 1),
-                        ..Default::default()
+                    if ctx.module_assign_mode {
+                        // Navigate developer list in assign mode
+                        ActionStateUpdate {
+                            selected_developer_index: Some(ctx.selected_developer_index + 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        // Get module count from context would require passing more data
+                        // For now, increment and let main.rs clamp it
+                        ActionStateUpdate {
+                            selected_module_index: Some(ctx.selected_module_index + 1),
+                            ..Default::default()
+                        }
                     }
                 }
                 AppMode::Settings => ActionStateUpdate {
@@ -1199,6 +1265,8 @@ pub struct ActionStateUpdate {
     pub module_delete_requested: Option<()>,
     pub developer_create_requested: Option<()>,
     pub developer_delete_requested: Option<()>,
+    pub module_assign_mode: Option<bool>,
+    pub module_assign_requested: Option<()>,
 
     // File staging
     pub toggle_staging_requested: Option<()>,

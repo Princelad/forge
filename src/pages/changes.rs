@@ -44,7 +44,10 @@ impl ChangesPage {
             .with_offset(scroll);
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(format!("Branch: {} | Space to stage/unstage", project.branch)))
+                .block(Block::bordered().title(format!(
+                    "Branch: {} | Space to stage/unstage",
+                    project.branch
+                )))
                 .highlight_style(ratatui::style::Style::new().reversed())
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true),

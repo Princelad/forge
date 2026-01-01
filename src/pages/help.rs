@@ -95,20 +95,34 @@ impl HelpPage {
         // Actions section
         let action_help = vec![
             Line::from(vec![
-                Span::styled("Changes", Style::new().bold().magenta()),
-                Span::raw("  Type message, press "),
+                Span::styled("Dashboard", Style::new().bold().magenta()),
+                Span::raw("  Press "),
                 Span::styled("Enter", Style::new().bold()),
-                Span::raw(" to commit"),
+                Span::raw(" to open Changes view"),
+            ]),
+            Line::from(vec![
+                Span::styled("Changes", Style::new().bold().magenta()),
+                Span::raw("    Press "),
+                Span::styled("Space", Style::new().bold()),
+                Span::raw(" to stage/unstage file"),
+            ]),
+            Line::from(vec![
+                Span::styled("Branches", Style::new().bold().magenta()),
+                Span::raw("   n: New, d: Delete, Enter: Switch"),
+            ]),
+            Line::from(vec![
+                Span::styled("Modules", Style::new().bold().magenta()),
+                Span::raw("    n: New, e: Edit, d: Delete, a: Assign"),
             ]),
             Line::from(vec![
                 Span::styled("Board", Style::new().bold().magenta()),
-                Span::raw("      Press "),
+                Span::raw("       Press "),
                 Span::styled("Enter", Style::new().bold()),
                 Span::raw(" to move item to next column"),
             ]),
             Line::from(vec![
                 Span::styled("Merge", Style::new().bold().magenta()),
-                Span::raw("       Use ← → to switch panes, "),
+                Span::raw("        Use ← → to switch panes, "),
                 Span::styled("Enter", Style::new().bold()),
                 Span::raw(" to accept"),
             ]),

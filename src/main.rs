@@ -85,6 +85,7 @@ pub struct App {
     module_scroll: usize,
     developer_scroll: usize,
     editing_module_id: Option<uuid::Uuid>,
+    module_assign_mode: bool,
     // Branch manager state
     branch_manager_mode: BranchManagerMode,
     selected_branch_index: usize,
@@ -138,6 +139,7 @@ impl App {
             module_scroll: 0,
             developer_scroll: 0,
             editing_module_id: None,
+            module_assign_mode: false,
             // Initialize branch manager state
             branch_manager_mode: BranchManagerMode::List,
             selected_branch_index: 0,
@@ -372,6 +374,7 @@ impl App {
                 self.module_manager_mode,
                 ModuleManagerMode::CreateDeveloper
             ),
+            module_assign_mode: self.module_assign_mode,
             module_input_empty: self.module_input_buffer.trim().is_empty(),
         };
 
@@ -722,6 +725,12 @@ impl App {
         }
         if update.developer_delete_requested.is_some() {
             self.perform_developer_delete();
+        }
+        if let Some(mode) = update.module_assign_mode {
+            self.module_assign_mode = mode;
+        }
+        if update.module_assign_requested.is_some() {
+            self.perform_module_assignment();
         }
         if update.toggle_staging_requested.is_some() {
             self.toggle_file_staging();
@@ -1166,6 +1175,31 @@ impl App {
                                 e
                             );
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    fn perform_module_assignment(&mut self) {
+        if let Some(project) = self.store.projects.get_mut(self.selected_project_index) {
+            if let Some(module) = project.modules.get(self.selected_module_index) {
+                let module_id = module.id;
+                if let Some(developer) = project.developers.get(self.selected_developer_index) {
+                    let developer_id = developer.id;
+                    let developer_name = developer.name.clone();
+                    if self.store.assign_module_owner(
+                        self.selected_project_index,
+                        module_id,
+                        Some(developer_id),
+                    ) {
+                        self.status_message = format!("✓ Assigned {} to module", developer_name);
+                        self.module_assign_mode = false;
+                        if let Some(wd) = self.git_workdir.as_ref() {
+                            let _ = self.store.save_to_json(wd);
+                        }
+                    } else {
+                        self.status_message = "✗ Failed to assign developer".into();
                     }
                 }
             }
