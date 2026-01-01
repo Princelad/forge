@@ -84,6 +84,7 @@ pub struct App {
     module_input_buffer: String,
     module_scroll: usize,
     developer_scroll: usize,
+    editing_module_id: Option<uuid::Uuid>,
     // Branch manager state
     branch_manager_mode: BranchManagerMode,
     selected_branch_index: usize,
@@ -136,6 +137,7 @@ impl App {
             module_input_buffer: String::new(),
             module_scroll: 0,
             developer_scroll: 0,
+            editing_module_id: None,
             // Initialize branch manager state
             branch_manager_mode: BranchManagerMode::List,
             selected_branch_index: 0,
@@ -176,6 +178,16 @@ impl App {
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
                     let _ = app.store.load_from_json(wd);
+                }
+                // Auto-populate developers from Git history
+                if let Some(client) = &app.git_client {
+                    if let Ok(committers) = client.get_committers() {
+                        app.store.auto_populate_developers_from_git(0, committers);
+                        // Save to persist auto-populated developers
+                        if let Some(wd) = app.git_workdir.as_ref() {
+                            let _ = app.store.save_to_json(wd);
+                        }
+                    }
                 }
             }
         }
@@ -348,6 +360,19 @@ impl App {
             selected_developer_index: self.selected_developer_index,
             cached_commits_len: self.cached_commits.len(),
             cached_branches_len: self.cached_branches.len(),
+            branch_create_mode: matches!(self.branch_manager_mode, BranchManagerMode::CreateBranch),
+            branch_input_empty: self.branch_input_buffer.trim().is_empty(),
+            module_manager_in_developer_list: matches!(
+                self.module_manager_mode,
+                ModuleManagerMode::DeveloperList
+            ),
+            module_create_mode: matches!(self.module_manager_mode, ModuleManagerMode::CreateModule),
+            module_edit_mode: matches!(self.module_manager_mode, ModuleManagerMode::EditModule),
+            developer_create_mode: matches!(
+                self.module_manager_mode,
+                ModuleManagerMode::CreateDeveloper
+            ),
+            module_input_empty: self.module_input_buffer.trim().is_empty(),
         };
 
         // Process action (stateless)
@@ -613,6 +638,94 @@ impl App {
         if update.commit_requested.is_some() {
             self.perform_commit();
         }
+
+        // Branch operations
+        if let Some(mode) = update.branch_create_mode {
+            self.branch_manager_mode = if mode {
+                BranchManagerMode::CreateBranch
+            } else {
+                BranchManagerMode::List
+            };
+        }
+        if let Some(c) = update.branch_input_append {
+            self.branch_input_buffer.push(c);
+        }
+        if update.branch_input_pop.is_some() {
+            self.branch_input_buffer.pop();
+        }
+        if update.branch_input_clear.is_some() {
+            self.branch_input_buffer.clear();
+        }
+        if update.branch_switch_requested.is_some() {
+            self.perform_branch_switch();
+        }
+        if update.branch_create_requested.is_some() {
+            self.perform_branch_create();
+        }
+        if update.branch_delete_requested.is_some() {
+            self.perform_branch_delete();
+        }
+
+        // Module operations
+        if update.toggle_module_list.is_some() {
+            self.module_manager_mode =
+                if matches!(self.module_manager_mode, ModuleManagerMode::ModuleList) {
+                    ModuleManagerMode::DeveloperList
+                } else {
+                    ModuleManagerMode::ModuleList
+                };
+        }
+        if let Some(mode) = update.module_create_mode {
+            if mode {
+                self.module_manager_mode = ModuleManagerMode::CreateModule;
+            } else if matches!(self.module_manager_mode, ModuleManagerMode::CreateModule) {
+                self.module_manager_mode = ModuleManagerMode::ModuleList;
+            }
+        }
+        if let Some(mode) = update.module_edit_mode {
+            if mode {
+                self.module_manager_mode = ModuleManagerMode::EditModule;
+            } else if matches!(self.module_manager_mode, ModuleManagerMode::EditModule) {
+                self.module_manager_mode = ModuleManagerMode::ModuleList;
+            }
+        }
+        if let Some(mode) = update.developer_create_mode {
+            if mode {
+                self.module_manager_mode = ModuleManagerMode::CreateDeveloper;
+            } else if matches!(self.module_manager_mode, ModuleManagerMode::CreateDeveloper) {
+                self.module_manager_mode = ModuleManagerMode::DeveloperList;
+            }
+        }
+        if let Some(c) = update.module_input_append {
+            self.module_input_buffer.push(c);
+        }
+        if update.module_input_pop.is_some() {
+            self.module_input_buffer.pop();
+        }
+        if update.module_input_clear.is_some() {
+            self.module_input_buffer.clear();
+        }
+        if update.module_load_selected.is_some() {
+            self.load_selected_module_for_edit();
+        }
+        if update.module_create_requested.is_some() {
+            self.perform_module_create();
+        }
+        if update.module_update_requested.is_some() {
+            self.perform_module_update();
+        }
+        if update.module_delete_requested.is_some() {
+            self.perform_module_delete();
+        }
+        if update.developer_create_requested.is_some() {
+            self.perform_developer_create();
+        }
+        if update.developer_delete_requested.is_some() {
+            self.perform_developer_delete();
+        }
+        if update.toggle_staging_requested.is_some() {
+            self.toggle_file_staging();
+        }
     }
 
     fn quit(&mut self) {
@@ -738,31 +851,39 @@ impl App {
     fn perform_commit(&mut self) {
         let msg = self.commit_message.trim();
         if let Some(client) = &self.git_client {
-            match client.stage_all() {
-                Ok(()) => match client.commit_all(msg) {
-                    Ok(_oid) => {
-                        // Refresh changes and bump progress
-                        if let Ok(changes) = client.list_changes() {
-                            if let Some(project) =
-                                self.store.projects.get_mut(self.selected_project_index)
-                            {
-                                project.changes = changes;
-                            }
-                        }
-                        self.store
-                            .bump_progress_on_commit(self.selected_project_index);
-                        self.status_message = format!("✓ Committed: {}", msg);
-                        self.commit_message.clear();
-                        if let Some(wd) = self.git_workdir.as_ref() {
-                            let _ = self.store.save_progress(wd);
+            // Check if any files are staged
+            let has_staged = self
+                .store
+                .projects
+                .get(self.selected_project_index)
+                .map(|p| p.changes.iter().any(|c| c.staged))
+                .unwrap_or(false);
+
+            if !has_staged {
+                self.status_message = "No files staged for commit".into();
+                return;
+            }
+
+            match client.commit_all(msg) {
+                Ok(_oid) => {
+                    // Refresh changes and bump progress
+                    if let Ok(changes) = client.list_changes() {
+                        if let Some(project) =
+                            self.store.projects.get_mut(self.selected_project_index)
+                        {
+                            project.changes = changes;
                         }
                     }
-                    Err(e) => {
-                        self.status_message = format!("✗ Commit failed: {}", e);
+                    self.store
+                        .bump_progress_on_commit(self.selected_project_index);
+                    self.status_message = format!("✓ Committed: {}", msg);
+                    self.commit_message.clear();
+                    if let Some(wd) = self.git_workdir.as_ref() {
+                        let _ = self.store.save_progress(wd);
                     }
-                },
+                }
                 Err(e) => {
-                    self.status_message = format!("✗ Stage failed: {}", e);
+                    self.status_message = format!("✗ Commit failed: {}", e);
                 }
             }
         }
@@ -813,6 +934,240 @@ impl App {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    fn perform_branch_switch(&mut self) {
+        let branch_name = self
+            .cached_branches
+            .get(self.selected_branch_index)
+            .map(|b| (b.name.clone(), b.is_current));
+
+        if let Some((name, is_current)) = branch_name {
+            if is_current {
+                self.status_message = "Already on this branch".into();
+                return;
+            }
+
+            if let Some(client) = &self.git_client {
+                match client.checkout_branch(&name) {
+                    Ok(()) => {
+                        self.status_message = format!("✓ Switched to branch: {}", name);
+                        // Refresh branch list
+                        self.refresh_view_cache();
+                        // Update project branch info
+                        if let Some(project) =
+                            self.store.projects.get_mut(self.selected_project_index)
+                        {
+                            project.branch = name;
+                        }
+                    }
+                    Err(e) => {
+                        self.status_message = format!("✗ Failed to switch branch: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    fn perform_branch_create(&mut self) {
+        let branch_name = self.branch_input_buffer.trim();
+        if let Some(client) = &self.git_client {
+            match client.create_branch(branch_name) {
+                Ok(()) => {
+                    self.status_message = format!("✓ Created branch: {}", branch_name);
+                    self.branch_input_buffer.clear();
+                    self.branch_manager_mode = BranchManagerMode::List;
+                    // Refresh branch list
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.status_message = format!("✗ Failed to create branch: {}", e);
+                }
+            }
+        }
+    }
+
+    fn perform_branch_delete(&mut self) {
+        let branch_info = self
+            .cached_branches
+            .get(self.selected_branch_index)
+            .map(|b| (b.name.clone(), b.is_current));
+
+        if let Some((name, is_current)) = branch_info {
+            if is_current {
+                self.status_message = "Cannot delete current branch".into();
+                return;
+            }
+
+            if let Some(client) = &self.git_client {
+                match client.delete_branch(&name) {
+                    Ok(()) => {
+                        self.status_message = format!("✓ Deleted branch: {}", name);
+                        // Refresh branch list
+                        self.refresh_view_cache();
+                    }
+                    Err(e) => {
+                        self.status_message = format!("✗ Failed to delete branch: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    fn load_selected_module_for_edit(&mut self) {
+        if let Some(project) = self.store.projects.get(self.selected_project_index) {
+            if let Some(module) = project.modules.get(self.selected_module_index) {
+                self.module_input_buffer = module.name.clone();
+                self.editing_module_id = Some(module.id);
+            }
+        }
+    }
+
+    fn perform_module_create(&mut self) {
+        let module_name = self.module_input_buffer.trim().to_string();
+        if let Some(_id) = self
+            .store
+            .add_module(self.selected_project_index, module_name.clone())
+        {
+            self.status_message = format!("✓ Created module: {}", module_name);
+            self.module_input_buffer.clear();
+            self.module_manager_mode = ModuleManagerMode::ModuleList;
+            if let Some(wd) = self.git_workdir.as_ref() {
+                let _ = self.store.save_to_json(wd);
+            }
+        } else {
+            self.status_message = "✗ Failed to create module".into();
+        }
+    }
+
+    fn perform_module_update(&mut self) {
+        let module_name = self.module_input_buffer.trim().to_string();
+        if let Some(module_id) = self.editing_module_id {
+            if self
+                .store
+                .update_module(self.selected_project_index, module_id, module_name.clone())
+            {
+                self.status_message = format!("✓ Updated module: {}", module_name);
+                self.module_input_buffer.clear();
+                self.module_manager_mode = ModuleManagerMode::ModuleList;
+                self.editing_module_id = None;
+                if let Some(wd) = self.git_workdir.as_ref() {
+                    let _ = self.store.save_to_json(wd);
+                }
+            } else {
+                self.status_message = "✗ Failed to update module".into();
+            }
+        }
+    }
+
+    fn perform_module_delete(&mut self) {
+        if let Some(project) = self.store.projects.get(self.selected_project_index) {
+            if let Some(module) = project.modules.get(self.selected_module_index) {
+                let module_id = module.id;
+                let module_name = module.name.clone();
+                if self
+                    .store
+                    .delete_module(self.selected_project_index, module_id)
+                {
+                    self.status_message = format!("✓ Deleted module: {}", module_name);
+                    // Adjust selection
+                    let new_count = self.store.projects[self.selected_project_index]
+                        .modules
+                        .len();
+                    if self.selected_module_index >= new_count && new_count > 0 {
+                        self.selected_module_index = new_count - 1;
+                    }
+                    if let Some(wd) = self.git_workdir.as_ref() {
+                        let _ = self.store.save_to_json(wd);
+                    }
+                } else {
+                    self.status_message = "✗ Failed to delete module".into();
+                }
+            }
+        }
+    }
+
+    fn perform_developer_create(&mut self) {
+        let developer_name = self.module_input_buffer.trim().to_string();
+        if let Some(_id) = self
+            .store
+            .add_developer(self.selected_project_index, developer_name.clone())
+        {
+            self.status_message = format!("✓ Created developer: {}", developer_name);
+            self.module_input_buffer.clear();
+            self.module_manager_mode = ModuleManagerMode::DeveloperList;
+            if let Some(wd) = self.git_workdir.as_ref() {
+                let _ = self.store.save_to_json(wd);
+            }
+        } else {
+            self.status_message = "✗ Failed to create developer".into();
+        }
+    }
+
+    fn perform_developer_delete(&mut self) {
+        if let Some(project) = self.store.projects.get(self.selected_project_index) {
+            if let Some(developer) = project.developers.get(self.selected_developer_index) {
+                let developer_id = developer.id;
+                let developer_name = developer.name.clone();
+                if self
+                    .store
+                    .delete_developer(self.selected_project_index, developer_id)
+                {
+                    self.status_message = format!("✓ Deleted developer: {}", developer_name);
+                    // Adjust selection
+                    let new_count = self.store.projects[self.selected_project_index]
+                        .developers
+                        .len();
+                    if self.selected_developer_index >= new_count && new_count > 0 {
+                        self.selected_developer_index = new_count - 1;
+                    }
+                    if let Some(wd) = self.git_workdir.as_ref() {
+                        let _ = self.store.save_to_json(wd);
+                    }
+                } else {
+                    self.status_message = "✗ Failed to delete developer".into();
+                }
+            }
+        }
+    }
+
+    fn toggle_file_staging(&mut self) {
+        if let Some(project) = self.store.projects.get_mut(self.selected_project_index) {
+            if let Some(change) = project.changes.get(self.selected_change_index) {
+                let path = change.path.clone();
+                let is_staged = change.staged;
+
+                if let Some(client) = &self.git_client {
+                    let result = if is_staged {
+                        client.unstage_file(&path)
+                    } else {
+                        client.stage_file(&path)
+                    };
+
+                    match result {
+                        Ok(()) => {
+                            // Refresh changes to update staging status
+                            if let Ok(changes) = client.list_changes() {
+                                project.changes = changes;
+                                self.status_message = if is_staged {
+                                    format!("✓ Unstaged: {}", path)
+                                } else {
+                                    format!("✓ Staged: {}", path)
+                                };
+                            }
+                        }
+                        Err(e) => {
+                            self.status_message = format!(
+                                "✗ Failed to {} {}: {}",
+                                if is_staged { "unstage" } else { "stage" },
+                                path,
+                                e
+                            );
+                        }
+                    }
+                }
             }
         }
     }

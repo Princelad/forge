@@ -62,12 +62,19 @@ impl GitClient {
                 .or_else(|| incoming_preview.clone())
                 .unwrap_or_else(|| "(no diff)".into());
 
+            let staged = status.is_index_new() 
+                || status.is_index_modified() 
+                || status.is_index_deleted() 
+                || status.is_index_renamed() 
+                || status.is_index_typechange();
+
             changes.push(Change {
                 path,
                 status: file_status,
                 diff_preview,
                 local_preview,
                 incoming_preview,
+                staged,
             });
         }
 
@@ -142,6 +149,52 @@ impl GitClient {
     pub fn stage_all(&self) -> Result<()> {
         let mut index = self.repo.index()?;
         index.add_all(["*"], IndexAddOption::DEFAULT, None)?;
+        index.write()?;
+        Ok(())
+    }
+
+    pub fn stage_file(&self, path: &str) -> Result<()> {
+        let mut index = self.repo.index()?;
+        index.add_path(std::path::Path::new(path))?;
+        index.write()?;
+        Ok(())
+    }
+
+    pub fn unstage_file(&self, path: &str) -> Result<()> {
+        let mut index = self.repo.index()?;
+        // Get HEAD tree
+        if let Some(head_tree) = self.head_tree() {
+            // Try to get the file from HEAD and reset it to that state
+            let path_obj = std::path::Path::new(path);
+            match head_tree.get_path(path_obj) {
+                Ok(entry) => {
+                    // File exists in HEAD - reset to HEAD version
+                    let oid = entry.id();
+                    let mode = entry.filemode() as u32;
+                    index.add_frombuffer(&git2::IndexEntry {
+                        ctime: git2::IndexTime::new(0, 0),
+                        mtime: git2::IndexTime::new(0, 0),
+                        dev: 0,
+                        ino: 0,
+                        mode,
+                        uid: 0,
+                        gid: 0,
+                        file_size: 0,
+                        id: oid,
+                        flags: 0,
+                        flags_extended: 0,
+                        path: path.as_bytes().to_vec(),
+                    }, path.as_bytes())?;
+                }
+                Err(_) => {
+                    // File doesn't exist in HEAD, remove from index
+                    index.remove_path(path_obj)?;
+                }
+            }
+        } else {
+            // No HEAD (initial commit), just remove from index
+            index.remove_path(std::path::Path::new(path))?;
+        }
         index.write()?;
         Ok(())
     }

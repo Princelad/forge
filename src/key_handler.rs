@@ -17,6 +17,8 @@ pub enum KeyAction {
     Search,
     InputChar(char),
     Backspace,
+    SwitchModuleList,
+    ToggleStaging,
     None,
 }
 
@@ -26,6 +28,13 @@ pub struct KeyHandler;
 impl KeyHandler {
     pub fn new() -> Self {
         Self
+    }
+
+    // Helper to track current context for Tab key disambiguation
+    fn is_module_manager_context(&self) -> bool {
+        // This will be overridden by passing context from App
+        // For now, return false (will be handled in ActionProcessor)
+        false
     }
 
     pub fn handle_crossterm_events(&mut self) -> color_eyre::Result<KeyAction> {
@@ -45,7 +54,14 @@ impl KeyHandler {
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => KeyAction::Quit,
             (_, KeyCode::Char('?')) => KeyAction::Help,
             (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
-            (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
+            (KeyModifiers::NONE, KeyCode::Tab) => {
+                // Handle Tab key for module manager list switching
+                if self.is_module_manager_context() {
+                    KeyAction::SwitchModuleList
+                } else {
+                    KeyAction::NextView
+                }
+            }
             (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k')) => KeyAction::NavigateUp,
             (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,
             (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => KeyAction::NavigateLeft,
@@ -54,6 +70,7 @@ impl KeyHandler {
             (KeyModifiers::NONE, KeyCode::PageDown) => KeyAction::ScrollPageDown,
             (KeyModifiers::NONE, KeyCode::Enter) => KeyAction::Select,
             (KeyModifiers::NONE, KeyCode::Backspace) => KeyAction::Backspace,
+            (KeyModifiers::NONE, KeyCode::Char(' ')) => KeyAction::ToggleStaging,
             (KeyModifiers::NONE, KeyCode::Char(c)) => KeyAction::InputChar(c),
             _ => KeyAction::None,
         }
@@ -89,6 +106,13 @@ pub struct ActionContext {
     pub selected_developer_index: usize,
     pub cached_commits_len: usize,
     pub cached_branches_len: usize,
+    pub branch_create_mode: bool,
+    pub branch_input_empty: bool,
+    pub module_manager_in_developer_list: bool,
+    pub module_create_mode: bool,
+    pub module_edit_mode: bool,
+    pub developer_create_mode: bool,
+    pub module_input_empty: bool,
 }
 
 /// Stateless action processor: takes action + context, returns result + modified state
@@ -137,6 +161,34 @@ impl ActionProcessor {
                             search_active: Some(false),
                             search_buffer: Some(String::new()),
                             selected_project_index: Some(0),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if ctx.branch_create_mode {
+                    return (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Cancelled branch creation".into()),
+                        },
+                        ActionStateUpdate {
+                            branch_create_mode: Some(false),
+                            branch_input_clear: Some(()),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if ctx.module_create_mode || ctx.module_edit_mode || ctx.developer_create_mode {
+                    return (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Cancelled".into()),
+                        },
+                        ActionStateUpdate {
+                            module_create_mode: Some(false),
+                            module_edit_mode: Some(false),
+                            developer_create_mode: Some(false),
+                            module_input_clear: Some(()),
                             ..Default::default()
                         },
                     );
@@ -232,6 +284,153 @@ impl ActionProcessor {
                             ..Default::default()
                         },
                     )
+                } else if ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::BranchManager)
+                {
+                    // Handle branch-specific actions
+                    match c {
+                        'n' if !ctx.branch_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(
+                                    "Enter branch name (Enter to create, Esc to cancel)".into(),
+                                ),
+                            },
+                            ActionStateUpdate {
+                                branch_create_mode: Some(true),
+                                ..Default::default()
+                            },
+                        ),
+                        'd' if !ctx.branch_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some("Deleting branch...".into()),
+                            },
+                            ActionStateUpdate {
+                                branch_delete_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        _ if ctx.branch_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                branch_input_append: Some(c),
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    }
+                } else if ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::ModuleManager)
+                {
+                    // Handle module manager specific actions
+                    match c {
+                        'n' if !ctx.module_create_mode
+                            && !ctx.module_edit_mode
+                            && !ctx.developer_create_mode =>
+                        {
+                            let in_developer_list = ctx.module_manager_in_developer_list;
+                            (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: Some(if in_developer_list {
+                                        "Enter developer name (Enter to create, Esc to cancel)"
+                                            .into()
+                                    } else {
+                                        "Enter module name (Enter to create, Esc to cancel)".into()
+                                    }),
+                                },
+                                ActionStateUpdate {
+                                    module_create_mode: if !in_developer_list {
+                                        Some(true)
+                                    } else {
+                                        None
+                                    },
+                                    developer_create_mode: if in_developer_list {
+                                        Some(true)
+                                    } else {
+                                        None
+                                    },
+                                    ..Default::default()
+                                },
+                            )
+                        }
+                        'e' if !ctx.module_create_mode
+                            && !ctx.module_edit_mode
+                            && !ctx.developer_create_mode
+                            && !ctx.module_manager_in_developer_list =>
+                        {
+                            (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: Some(
+                                        "Edit module name (Enter to save, Esc to cancel)".into(),
+                                    ),
+                                },
+                                ActionStateUpdate {
+                                    module_edit_mode: Some(true),
+                                    module_load_selected: Some(()),
+                                    ..Default::default()
+                                },
+                            )
+                        }
+                        'd' if !ctx.module_create_mode
+                            && !ctx.module_edit_mode
+                            && !ctx.developer_create_mode =>
+                        {
+                            let in_developer_list = ctx.module_manager_in_developer_list;
+                            (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: Some("Deleting...".into()),
+                                },
+                                ActionStateUpdate {
+                                    module_delete_requested: if !in_developer_list {
+                                        Some(())
+                                    } else {
+                                        None
+                                    },
+                                    developer_delete_requested: if in_developer_list {
+                                        Some(())
+                                    } else {
+                                        None
+                                    },
+                                    ..Default::default()
+                                },
+                            )
+                        }
+                        _ if ctx.module_create_mode
+                            || ctx.module_edit_mode
+                            || ctx.developer_create_mode =>
+                        {
+                            (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: None,
+                                },
+                                ActionStateUpdate {
+                                    module_input_append: Some(c),
+                                    ..Default::default()
+                                },
+                            )
+                        }
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    }
                 } else {
                     (
                         ActionResult {
@@ -262,6 +461,34 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             commit_message_pop: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::BranchManager)
+                    && ctx.branch_create_mode
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            branch_input_pop: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::ModuleManager)
+                    && (ctx.module_create_mode || ctx.module_edit_mode || ctx.developer_create_mode)
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            module_input_pop: Some(()),
                             ..Default::default()
                         },
                     )
@@ -365,6 +592,72 @@ impl ActionProcessor {
                     )
                 }
             }
+            KeyAction::SwitchModuleList => {
+                if matches!(ctx.current_view, AppMode::ModuleManager)
+                    && !ctx.module_create_mode
+                    && !ctx.module_edit_mode
+                    && !ctx.developer_create_mode
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            toggle_module_list: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    // Fall back to NextView if not in module manager
+                    let next_view = ctx.current_view.next();
+                    let next_idx = next_view.menu_index();
+                    let update = ActionStateUpdate {
+                        current_view: Some(next_view),
+                        menu_selected_index: Some(next_idx),
+                        search_active: if matches!(next_view, AppMode::Dashboard) {
+                            None
+                        } else {
+                            Some(false)
+                        },
+                        search_buffer: if matches!(next_view, AppMode::Dashboard) {
+                            None
+                        } else {
+                            Some(String::new())
+                        },
+                        ..Default::default()
+                    };
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        update,
+                    )
+                }
+            }
+            KeyAction::ToggleStaging => {
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Toggling staging...".into()),
+                        },
+                        ActionStateUpdate {
+                            toggle_staging_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
             KeyAction::None => (
                 ActionResult {
                     should_quit: false,
@@ -457,6 +750,115 @@ impl ActionProcessor {
                     ..Default::default()
                 },
             )
+        } else if matches!(ctx.current_view, AppMode::BranchManager) {
+            if ctx.branch_create_mode {
+                // Create branch
+                if ctx.branch_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Branch name cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Creating branch...".into()),
+                        },
+                        ActionStateUpdate {
+                            branch_create_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else {
+                // Switch branch
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: Some("Switching branch...".into()),
+                    },
+                    ActionStateUpdate {
+                        branch_switch_requested: Some(()),
+                        ..Default::default()
+                    },
+                )
+            }
+        } else if matches!(ctx.current_view, AppMode::ModuleManager) {
+            if ctx.module_create_mode {
+                if ctx.module_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Module name cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Creating module...".into()),
+                        },
+                        ActionStateUpdate {
+                            module_create_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else if ctx.module_edit_mode {
+                if ctx.module_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Module name cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Updating module...".into()),
+                        },
+                        ActionStateUpdate {
+                            module_update_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else if ctx.developer_create_mode {
+                if ctx.module_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Developer name cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Creating developer...".into()),
+                        },
+                        ActionStateUpdate {
+                            developer_create_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: None,
+                    },
+                    ActionStateUpdate::none(),
+                )
+            }
         } else {
             (
                 ActionResult {
@@ -773,6 +1175,33 @@ pub struct ActionStateUpdate {
     pub accept_merge_pane: Option<()>,
     pub toggle_setting: Option<()>,
     pub commit_requested: Option<()>,
+
+    // Branch operations
+    pub branch_create_mode: Option<bool>,
+    pub branch_input_append: Option<char>,
+    pub branch_input_pop: Option<()>,
+    pub branch_input_clear: Option<()>,
+    pub branch_switch_requested: Option<()>,
+    pub branch_create_requested: Option<()>,
+    pub branch_delete_requested: Option<()>,
+
+    // Module operations
+    pub toggle_module_list: Option<()>,
+    pub module_create_mode: Option<bool>,
+    pub module_edit_mode: Option<bool>,
+    pub developer_create_mode: Option<bool>,
+    pub module_input_append: Option<char>,
+    pub module_input_pop: Option<()>,
+    pub module_input_clear: Option<()>,
+    pub module_load_selected: Option<()>,
+    pub module_create_requested: Option<()>,
+    pub module_update_requested: Option<()>,
+    pub module_delete_requested: Option<()>,
+    pub developer_create_requested: Option<()>,
+    pub developer_delete_requested: Option<()>,
+
+    // File staging
+    pub toggle_staging_requested: Option<()>,
 }
 
 impl ActionStateUpdate {

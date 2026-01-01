@@ -16,6 +16,7 @@ pub struct Change {
     // Optional previews for merge visualizer panes; fall back to diff_preview
     pub local_preview: Option<String>,
     pub incoming_preview: Option<String>,
+    pub staged: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

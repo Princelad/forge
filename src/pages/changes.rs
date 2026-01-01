@@ -44,7 +44,7 @@ impl ChangesPage {
             .with_offset(scroll);
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(format!("Branch: {}", project.branch)))
+                .block(Block::bordered().title(format!("Branch: {} | Space to stage/unstage", project.branch)))
                 .highlight_style(ratatui::style::Style::new().reversed())
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true),
@@ -77,6 +77,7 @@ impl ChangesPage {
             crate::data::FileStatus::Added => "A",
             crate::data::FileStatus::Deleted => "D",
         };
-        format!("[{status}] {}", c.path)
+        let staged_marker = if c.staged { "✓" } else { " " };
+        format!("[{staged_marker}] [{status}] {}", c.path)
     }
 }

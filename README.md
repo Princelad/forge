@@ -39,12 +39,16 @@ Core question:
 - Terminal-based UI using **Rust + ratatui + git2**
 - Top-bar menu navigation with focus tracking
 - Real Git repository parsing and status display
-- Live staging and commit execution (`git add -A` + commit) with status updates
+- **Selective file staging** with Space key to toggle individual files
+- Live staging and commit execution (commits only staged files) with status updates
+- **Branch operations**: switch, create, and delete branches with full Git integration
 - Commit history view (last 50 commits with author, date, message, files changed)
 - Branch manager view listing local branches with current-branch marker
+- **Module/developer CRUD**: create, edit, delete modules and developers from UI
+- **Auto-population**: developers are automatically populated from Git commit history
 - Module/developer persistence to `.forge` and progress persistence to `.git/forge`
 - Multi-pane layouts for complex views
-- Keyboard-driven interactions (Tab, arrows, Enter, Esc)
+- Keyboard-driven interactions (Tab, arrows, Enter, Esc, Space for staging, n/e/d for CRUD)
 - Project search with live filtering (`Ctrl+F`)
 - Settings with theme switching (Default/HighContrast)
 - Merge resolution tracking with visual indicators
@@ -53,12 +57,10 @@ Core question:
 
 ### Explicitly Not Yet Implemented
 
-- Branch switching/creation/deletion actions (UI currently read-only)
-- Module/developer create/edit/assign flows from the UI (render-only for now)
 - Remote operations (push/pull/fetch)
-- Automated task inference from commits
-- Persistence layer for modules/developers
-- AI/ML features
+- Automated task inference from commits (module auto-population from commit patterns)
+- AI/ML features for commit message generation
+- Multi-repository support
 
 ---
 
@@ -91,13 +93,18 @@ Core question:
 
 ### 3. Changes Page
 
-- Left pane: List of changed files **from Git status** with status badges:
+- Left pane: List of changed files **from Git status** with staging indicators:
 
-  - `Modified` — Modified files
-  - `Added` — New/untracked files
-  - `Deleted` — Deleted files
+  - `[✓]` — Staged for commit
+  - `[ ]` — Unstaged
+  - `[M]` — Modified files
+  - `[A]` — New/untracked files
+  - `[D]` — Deleted files
 
 - Right pane: **Real diff preview** from `git diff` for selected file
+- Bottom pane: Commit message input
+- Press `Space` to stage/unstage individual files
+- Press `Enter` to commit (only commits staged files)
 - Bottom pane: Commit message input
   - Type freely; press Enter to stage all + commit when a Git repo is detected
   - Status bar shows commit confirmation or error details
@@ -211,11 +218,11 @@ forge/
         ├── main_menu.rs         # Top-bar menu navigation
         ├── dashboard.rs         # Project list view with search
         ├── changes.rs           # Git file changes & commit input
-      ├── commit_history.rs    # Commit list + details view
-      ├── branch_manager.rs    # Branch list view (read-only)
+        ├── commit_history.rs    # Commit list + details view
+        ├── branch_manager.rs    # Branch list view (read-only)
         ├── merge_visualizer.rs  # Three-pane merge view with resolution
         ├── project_board.rs     # Kanban board
-      ├── module_manager.rs    # Module/developer list view
+        ├── module_manager.rs    # Module/developer list view
         ├── settings.rs          # Settings with live toggles
         └── help.rs              # Help overlay
 ```
@@ -377,18 +384,26 @@ cd /path/to/your/git/project
 3. Press `Ctrl+F` → Search projects (type to filter, Esc to exit)
 4. Press `Tab` → Switch to **Changes** view with real Git status
 5. **Navigate** files with Up/Down → See live diff preview on right
-6. Type a commit message in the bottom pane
-7. Press `Enter` → Stage all + commit (uses repo config or fallback name/email)
-8. Press `Tab` → **Commit History** to browse recent commits + files changed
-9. Press `Tab` → **Branches** to view local branches (current highlighted)
-10. Press `Tab` → **Merge Visualizer** shows files with diff previews
-11. Navigate panes with `Left`/`Right`, accept with `Enter`
-12. Press `Tab` → **Project Board** shows manual modules (if any)
-13. Press `Tab` → **Modules** to view modules/developers (read-only)
-14. Press `Tab` → **Settings** to toggle theme/notifications
-15. Press `?` → Toggle help overlay
-16. Press `Esc` → Return to menu focus
-17. Press `q` or `Esc` from menu → Quit
+6. Press `Space` to stage/unstage individual files (✓ indicator appears)
+7. Type a commit message in the bottom pane
+8. Press `Enter` → Commit staged files (uses repo config or fallback name/email)
+9. Press `Tab` → **Commit History** to browse recent commits + files changed
+10. Press `Tab` → **Branches** to manage branches:
+    - Press `n` to create a new branch
+    - Press `d` to delete selected branch
+    - Press `Enter` to switch to selected branch
+11. Press `Tab` → **Merge Visualizer** shows files with diff previews
+12. Navigate panes with `Left`/`Right`, accept with `Enter`
+13. Press `Tab` → **Project Board** shows modules organized by status
+14. Press `Tab` → **Modules** to manage modules/developers:
+    - Press `n` to create new module or developer (context-aware)
+    - Press `e` to edit selected module
+    - Press `d` to delete selected module/developer
+    - Press `Tab` to switch between module and developer lists
+15. Press `Tab` → **Settings** to toggle theme/notifications
+16. Press `?` → Toggle help overlay
+17. Press `Esc` → Return to menu focus or cancel current operation
+18. Press `q` or `Esc` from menu → Quit
 
 ---
 
@@ -433,15 +448,11 @@ pub struct App {
 
 ### Near-Term (Core Git Operations)
 
-- [ ] Wire branch switching/creation/deletion actions to Branch Manager
-- [ ] Selective staging and commit enhancements (beyond stage-all)
 - [ ] Remote operations (fetch/pull/push)
 - [ ] Stash management
-- [ ] Repo picker / multi-repo support
-- [ ] Module/developer CRUD + assignment flows in Modules view
-- [ ] Remote operations (fetch/pull/push)
-- [ ] Stash management
-- [ ] Repo picker / multi-repo support
+- [ ] Multi-repo support / repository picker
+- [ ] Rebase and merge tools
+- [ ] Enhanced diff viewing (word-level, syntax highlighting)
 
 ### Mid-Term (Automation & Intelligence)
 
@@ -465,7 +476,7 @@ pub struct App {
 
 ## Progress Log
 
-- 2026-01-01 — GitHub Copilot — Reviewed current codebase and refreshed README to reflect commit execution, new History/Branches/Modules views, and persistence notes — Status: done — Next: wire branch actions and module/developer CRUD flows.
+- **2026-01-01** — GitHub Copilot — Implemented branch manager actions (switch/create/delete), module/developer CRUD flows, auto-population of developers from Git history, and selective file staging — Status: done — Next: remote operations and automated module inference
 
 ---
 
