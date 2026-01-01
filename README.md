@@ -39,20 +39,22 @@ Core question:
 - Terminal-based UI using **Rust + ratatui + git2**
 - Top-bar menu navigation with focus tracking
 - Real Git repository parsing and status display
+- Live staging and commit execution (`git add -A` + commit) with status updates
+- Commit history view (last 50 commits with author, date, message, files changed)
+- Branch manager view listing local branches with current-branch marker
+- Module/developer persistence to `.forge` and progress persistence to `.git/forge`
 - Multi-pane layouts for complex views
 - Keyboard-driven interactions (Tab, arrows, Enter, Esc)
 - Project search with live filtering (`Ctrl+F`)
 - Settings with theme switching (Default/HighContrast)
 - Merge resolution tracking with visual indicators
-- Commit message input (UI ready, commit execution pending)
 - Help overlay with keybindings (`?`)
 - Focus-aware status bar with repo/settings badges
 
 ### Explicitly Not Yet Implemented
 
-- Staging files and executing Git commits
-- Commit history analysis or log viewing
-- Branch switching and creation
+- Branch switching/creation/deletion actions (UI currently read-only)
+- Module/developer create/edit/assign flows from the UI (render-only for now)
 - Remote operations (push/pull/fetch)
 - Automated task inference from commits
 - Persistence layer for modules/developers
@@ -97,10 +99,24 @@ Core question:
 
 - Right pane: **Real diff preview** from `git diff` for selected file
 - Bottom pane: Commit message input
-  - Type freely; press Enter to commit (UI ready, execution pending)
-  - Status bar shows commit confirmation
+  - Type freely; press Enter to stage all + commit when a Git repo is detected
+  - Status bar shows commit confirmation or error details
 
-### 4. Merge Visualizer
+### 4. Commit History
+
+- Two-pane layout:
+
+  - **Left**: Commit list (hash, first-line message, author, date)
+  - **Right**: Commit details (full message + files changed)
+
+- Shows up to the 50 most recent commits
+
+### 5. Branch Manager
+
+- Branch list with current branch highlighted
+- Local branches only; creation/switch/delete flows are visible but not yet wired
+
+### 6. Merge Visualizer
 
 - Three-pane layout:
 
@@ -112,12 +128,17 @@ Core question:
 - Accept resolution with Enter (tracks choice with green border highlight)
 - Focused pane highlighted in yellow, accepted pane in green
 
-### 5. Settings
+### 7. Settings
 
 - **Theme**: Default / High Contrast (applies to status bar styling)
 - **Notifications**: On / Off (placeholder)
 - **Autosync**: On / Off (placeholder)
 - Toggle with Enter, reflects immediately in UI
+
+### 8. Module Manager
+
+- Split view: Modules on the left, developers on the right
+- Reads persisted modules/developers (if present in `.forge`); editing/creation flows are not yet active
 
 ---
 
@@ -190,8 +211,11 @@ forge/
         ├── main_menu.rs         # Top-bar menu navigation
         ├── dashboard.rs         # Project list view with search
         ├── changes.rs           # Git file changes & commit input
+      ├── commit_history.rs    # Commit list + details view
+      ├── branch_manager.rs    # Branch list view (read-only)
         ├── merge_visualizer.rs  # Three-pane merge view with resolution
         ├── project_board.rs     # Kanban board
+      ├── module_manager.rs    # Module/developer list view
         ├── settings.rs          # Settings with live toggles
         └── help.rs              # Help overlay
 ```
@@ -213,43 +237,56 @@ The app tracks **two focus modes**:
 
 2. **View Focus** (default starting state)
    - Content area (current view) is active
-   - Tab cycles between views (Dashboard → Changes → Merge → Board → Settings)
-   - Up/Down navigate within the current view (project list, files, etc.)
-   - Esc returns focus to menu
-   - Menu selection auto-syncs to current view when cycling
+
+- Tab cycles between views (Dashboard → Changes → History → Branches → Merge → Board → Modules → Settings)
+- Up/Down navigate within the current view (project list, files, etc.)
+- Esc returns focus to menu
+- Menu selection auto-syncs to current view when cycling
 
 ### Keyboard Bindings
 
-| Key            | Action                                                    |
-| -------------- | --------------------------------------------------------- |
-| `Tab`          | Cycle menu items (Menu) OR cycle views (View)             |
-| `Up` / `k`     | Navigate up in menu or view                               |
-| `Down` / `j`   | Navigate down in menu or view                             |
-| `Left` / `h`   | Navigate left (Board columns, Merge panes)                |
-| `Right` / `l`  | Navigate right (Board columns, Merge panes)               |
-| `Enter`        | Select menu item / commit / toggle setting / accept merge |
-| `Esc`          | Back to menu / exit search / close help                   |
-| `q` / `Ctrl+C` | Quit immediately from any view                            |
-| `?`            | Toggle help overlay                                       |
-| `Ctrl+F`       | Toggle project search (Dashboard only)                    |
-| `PageUp/Down`  | Scroll long lists                                         |
-| Text keys      | Type commit message (Changes) or search query (Dashboard) |
-| `Backspace`    | Delete character in text input fields                     |
+| Key            | Action                                                          |
+| -------------- | --------------------------------------------------------------- |
+| `Tab`          | Cycle menu items (Menu) OR cycle views (View)                   |
+| `Up` / `k`     | Navigate up in menu or view                                     |
+| `Down` / `j`   | Navigate down in menu or view                                   |
+| `Left` / `h`   | Navigate left (Board columns, Merge panes)                      |
+| `Right` / `l`  | Navigate right (Board columns, Merge panes)                     |
+| `Enter`        | Select menu item / stage+commit / toggle setting / accept merge |
+| `Esc`          | Back to menu / exit search / close help                         |
+| `q` / `Ctrl+C` | Quit immediately from any view                                  |
+| `?`            | Toggle help overlay                                             |
+| `Ctrl+F`       | Toggle project search (Dashboard only)                          |
+| `PageUp/Down`  | Scroll long lists                                               |
+| Text keys      | Type commit message (Changes) or search query (Dashboard)       |
+| `Backspace`    | Delete character in text input fields                           |
 
 ### Interaction Flow
+
 ```
 [Menu Focus - "Dashboard" highlighted]
 ↓ (Enter)
 [View Focus - Dashboard view active, menu shows "Dashboard"]
 ↓ (Tab)
 [View Focus - Changes view active, menu shows "Changes"]
-↓ (Tab again)
+↓ (Tab)
+[View Focus - History view active, menu shows "History"]
+↓ (Tab)
+[View Focus - Branches view active, menu shows "Branches"]
+↓ (Tab)
 [View Focus - Merge view active, menu shows "Merge"]
+↓ (Tab)
+[View Focus - Board view active, menu shows "Board"]
+↓ (Tab)
+[View Focus - Modules view active, menu shows "Modules"]
+↓ (Tab)
+[View Focus - Settings view active, menu shows "Settings"]
 ↓ (Esc)
-[Menu Focus - still on "Merge" in menu, can navigate with arrows]
+[Menu Focus - still on "Settings" in menu, can navigate with arrows]
 ↓ (from Menu, Esc or q)
 [Exit]
 ```
+
 ---
 
 ## Data Source
@@ -263,6 +300,7 @@ Forge automatically discovers and loads your **current Git repository** on start
   - File changes (from `git status`)
   - Diff previews (from `git diff`)
 - **Fallback**: If no repo found, starts with empty project list
+- **Persistence**: Module progress saved to `.git/forge/progress.txt`; modules/developers persisted to `.forge/*.json`
 
 **Modules and Developers** are currently **manual placeholders** (not auto-populated from Git history).
 
@@ -278,16 +316,20 @@ Forge automatically discovers and loads your **current Git repository** on start
 - [x] Real-time file status from `git status`
 - [x] Live diff preview generation from `git diff`
 - [x] Branch detection and display
+- [x] Branch list view (current branch highlighted)
 - [x] Top-bar menu navigation with focus tracking
 - [x] View switching with Tab
 - [x] Dashboard with project selection and search (`Ctrl+F`)
 - [x] Changes page with real Git file list & diff preview
+- [x] Commit execution (stage-all + commit message)
+- [x] Commit history view with per-commit detail pane
 - [x] Kanban-style project board (manual modules)
 - [x] Merge visualizer with resolution tracking
+- [x] Module/developer persistence (.forge) and progress persistence (.git/forge)
+- [x] Modules/Developers view (read-only list)
 - [x] Settings with live theme/notification toggles
 - [x] Help overlay (`?`)
 - [x] Status bar with focus/repo/settings badges
-- [x] Commit message input (UI ready)
 - [x] Merge resolution state tracking
 - [x] Theme switching (Default/HighContrast)
 - [x] Search with match count display
@@ -295,13 +337,11 @@ Forge automatically discovers and loads your **current Git repository** on start
 
 ### In Progress / Not Yet Implemented
 
-- [ ] Git commit execution (staging + committing files)
-- [ ] Branch switching and creation
-- [ ] Commit history viewing
+- [ ] Branch switching/creation/deletion actions
+- [ ] Module/developer create/edit/assign flows in the UI
 - [ ] Remote operations (push/pull/fetch)
 - [ ] Multi-repo support / repo picker
 - [ ] Auto-population of modules from Git data
-- [ ] Persistence for manual modules/developers
 - [ ] Advanced merge conflict resolution
 - [ ] AI/ML inference features
 
@@ -338,14 +378,17 @@ cd /path/to/your/git/project
 4. Press `Tab` → Switch to **Changes** view with real Git status
 5. **Navigate** files with Up/Down → See live diff preview on right
 6. Type a commit message in the bottom pane
-7. Press `Enter` → Commit prepared (execution pending implementation)
-8. Press `Tab` → **Merge Visualizer** shows files with diff previews
-9. Navigate panes with `Left`/`Right`, accept with `Enter`
-10. Press `Tab` → **Project Board** shows manual modules (if any)
-11. Press `Tab` → **Settings** to toggle theme/notifications
-12. Press `?` → Toggle help overlay
-13. Press `Esc` → Return to menu focus
-14. Press `q` or `Esc` from menu → Quit
+7. Press `Enter` → Stage all + commit (uses repo config or fallback name/email)
+8. Press `Tab` → **Commit History** to browse recent commits + files changed
+9. Press `Tab` → **Branches** to view local branches (current highlighted)
+10. Press `Tab` → **Merge Visualizer** shows files with diff previews
+11. Navigate panes with `Left`/`Right`, accept with `Enter`
+12. Press `Tab` → **Project Board** shows manual modules (if any)
+13. Press `Tab` → **Modules** to view modules/developers (read-only)
+14. Press `Tab` → **Settings** to toggle theme/notifications
+15. Press `?` → Toggle help overlay
+16. Press `Esc` → Return to menu focus
+17. Press `q` or `Esc` from menu → Quit
 
 ---
 
@@ -390,9 +433,12 @@ pub struct App {
 
 ### Near-Term (Core Git Operations)
 
-- [ ] Execute Git commits (staging + commit with message)
-- [ ] Branch listing and switching
-- [ ] Commit history view with log navigation
+- [ ] Wire branch switching/creation/deletion actions to Branch Manager
+- [ ] Selective staging and commit enhancements (beyond stage-all)
+- [ ] Remote operations (fetch/pull/push)
+- [ ] Stash management
+- [ ] Repo picker / multi-repo support
+- [ ] Module/developer CRUD + assignment flows in Modules view
 - [ ] Remote operations (fetch/pull/push)
 - [ ] Stash management
 - [ ] Repo picker / multi-repo support
@@ -414,6 +460,12 @@ pub struct App {
 - [ ] Code review integration
 - [ ] CI/CD pipeline status display
 - [ ] Collaborative/multiplayer features
+
+---
+
+## Progress Log
+
+- 2026-01-01 — GitHub Copilot — Reviewed current codebase and refreshed README to reflect commit execution, new History/Branches/Modules views, and persistence notes — Status: done — Next: wire branch actions and module/developer CRUD flows.
 
 ---
 
