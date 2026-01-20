@@ -1332,4 +1332,165 @@ mod tests {
         });
         assert_eq!(ch, KeyAction::InputChar('x'));
     }
+
+    #[test]
+    fn test_navigation_keys() {
+        let mut kh = KeyHandler::new();
+
+        let down = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Down,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(down, KeyAction::NavigateDown);
+
+        let left = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Left,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(left, KeyAction::NavigateLeft);
+
+        let right = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Right,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(right, KeyAction::NavigateRight);
+    }
+
+    #[test]
+    fn test_vim_keybindings() {
+        let mut kh = KeyHandler::new();
+
+        let up_vim = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('k'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(up_vim, KeyAction::NavigateUp);
+
+        let down_vim = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('j'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(down_vim, KeyAction::NavigateDown);
+
+        let left_vim = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('h'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(left_vim, KeyAction::NavigateLeft);
+
+        let right_vim = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('l'),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(right_vim, KeyAction::NavigateRight);
+    }
+
+    #[test]
+    fn test_modifier_keys() {
+        let mut kh = KeyHandler::new();
+
+        let ctrl_c = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('c'),
+            modifiers: crossterm::event::KeyModifiers::CONTROL,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(ctrl_c, KeyAction::Quit);
+
+        let ctrl_f = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char('f'),
+            modifiers: crossterm::event::KeyModifiers::CONTROL,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(ctrl_f, KeyAction::Search);
+    }
+
+    #[test]
+    fn test_staging_and_enter() {
+        let mut kh = KeyHandler::new();
+
+        let space = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Char(' '),
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(space, KeyAction::ToggleStaging);
+
+        let enter = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Enter,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(enter, KeyAction::Select);
+    }
+
+    #[test]
+    fn test_page_keys() {
+        let mut kh = KeyHandler::new();
+
+        let page_up = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::PageUp,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(page_up, KeyAction::ScrollPageUp);
+
+        let page_down = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::PageDown,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(page_down, KeyAction::ScrollPageDown);
+    }
+
+    #[test]
+    fn test_backspace() {
+        let mut kh = KeyHandler::new();
+
+        let backspace = kh.on_key_event(crossterm::event::KeyEvent {
+            code: crossterm::event::KeyCode::Backspace,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        });
+        assert_eq!(backspace, KeyAction::Backspace);
+    }
+
+    #[test]
+    fn test_action_result_creation() {
+        let result = ActionResult {
+            should_quit: false,
+            status_message: Some("Test message".to_string()),
+        };
+
+        assert!(!result.should_quit);
+        assert_eq!(result.status_message, Some("Test message".to_string()));
+    }
+
+    #[test]
+    fn test_action_state_update_none() {
+        let update = ActionStateUpdate::none();
+        assert!(update.focus.is_none());
+        assert!(update.current_view.is_none());
+        assert!(update.show_help.is_none());
+    }
 }

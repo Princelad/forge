@@ -371,3 +371,186 @@ impl GitClient {
         Ok(commits)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_gitclient_discover_valid_repo() {
+        // Create a temporary git repository
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        // Initialize a git repo
+        git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Test discover
+        let client = GitClient::discover(repo_path);
+        assert!(
+            client.is_ok(),
+            "GitClient::discover should succeed for valid repo"
+        );
+    }
+
+    #[test]
+    fn test_gitclient_discover_invalid_path() {
+        let result = GitClient::discover("/nonexistent/path/that/does/not/exist");
+        assert!(
+            result.is_err(),
+            "GitClient::discover should fail for invalid path"
+        );
+    }
+
+    #[test]
+    fn test_head_branch_on_empty_repo() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        git2::Repository::init(repo_path).expect("Failed to initialize repo");
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+
+        // Empty repo has no HEAD
+        let branch = client.head_branch();
+        // Could be None or Some("master") depending on git config
+        // Just verify it doesn't panic
+        let _ = branch;
+    }
+
+    #[test]
+    fn test_list_changes_empty_repo() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        git2::Repository::init(repo_path).expect("Failed to initialize repo");
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+
+        let changes = client.list_changes();
+        assert!(changes.is_ok(), "list_changes should succeed on empty repo");
+        assert_eq!(
+            changes.unwrap().len(),
+            0,
+            "empty repo should have no changes"
+        );
+    }
+
+    #[test]
+    fn test_list_changes_with_untracked_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create an untracked file
+        let test_file = repo_path.join("test.txt");
+        fs::write(&test_file, "test content").expect("Failed to write test file");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+        let changes = client.list_changes();
+
+        assert!(changes.is_ok(), "list_changes should succeed");
+        let changes_vec = changes.unwrap();
+        assert!(
+            changes_vec.len() > 0,
+            "untracked file should appear in changes"
+        );
+        assert_eq!(
+            changes_vec[0].status,
+            FileStatus::Added,
+            "untracked file should be marked as Added"
+        );
+    }
+
+    #[test]
+    fn test_stage_file() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let test_file = repo_path.join("test.txt");
+        fs::write(&test_file, "initial").expect("Failed to write test file");
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("test.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        // Create signature and commit
+        let sig =
+            git2::Signature::now("Test", "test@example.com").expect("Failed to create signature");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .expect("Failed to create commit");
+
+        // Modify the file
+        fs::write(&test_file, "modified").expect("Failed to modify file");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+
+        // Stage the file
+        let result = client.stage_file("test.txt");
+        assert!(result.is_ok(), "stage_file should succeed");
+    }
+
+    #[test]
+    fn test_commit_data_type_alias() {
+        // This test ensures the CommitData type alias is correctly defined
+        let _sample: CommitData = (
+            "abc123".to_string(),
+            "John Doe".to_string(),
+            "2024-01-01".to_string(),
+            "Test commit".to_string(),
+            vec!["file1.rs".to_string(), "file2.rs".to_string()],
+        );
+        // If compilation succeeds, the type alias is correct
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_full_git_workflow() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create and commit initial file
+        let file1 = repo_path.join("file1.txt");
+        fs::write(&file1, "content1").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("file1.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig =
+            git2::Signature::now("Test", "test@example.com").expect("Failed to create signature");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "First commit", &tree, &[])
+            .expect("Failed to create commit");
+
+        // Create client and test operations
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+
+        // Create new file
+        let file2 = repo_path.join("file2.txt");
+        fs::write(&file2, "content2").expect("Failed to write file");
+
+        // List changes - should show new file
+        let changes = client.list_changes().expect("Failed to list changes");
+        assert!(changes.len() > 0, "Should detect new file");
+
+        // Stage the file
+        let stage_result = client.stage_file("file2.txt");
+        assert!(stage_result.is_ok(), "Should stage file successfully");
+    }
+}

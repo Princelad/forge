@@ -6,6 +6,14 @@ authors = ["Prince Lad <ladprince1112@gmail.com>"]
 license = "GPL-3.0-only"
 edition = "2021"
 
+[[bin]]
+name = "forge"
+path = "src/main.rs"
+
+[lib]
+name = "forge"
+path = "src/lib.rs"
+
 [dependencies]
 crossterm = "0.29.0"
 ratatui = "0.29.0"
@@ -15,6 +23,9 @@ git2 = "0.20.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.148"
 chrono = "0.4.42"
+
+[dev-dependencies]
+tempfile = "3.8.1"
 
 # Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
 [profile.release]

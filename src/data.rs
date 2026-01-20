@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum FileStatus {
     Modified,
     Added,
@@ -307,5 +307,310 @@ impl FakeStore {
                 }
             }
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_status_creation() {
+        let _status_modified = FileStatus::Modified;
+        let _status_added = FileStatus::Added;
+        let _status_deleted = FileStatus::Deleted;
+
+        // Verify Copy trait works
+        let status_copy = _status_modified;
+        assert!(matches!(status_copy, FileStatus::Modified));
+    }
+
+    #[test]
+    fn test_change_struct_creation() {
+        let change = Change {
+            path: "src/main.rs".to_string(),
+            status: FileStatus::Modified,
+            diff_preview: "--- a/src/main.rs\n+++ b/src/main.rs".to_string(),
+            local_preview: Some("local changes".to_string()),
+            incoming_preview: Some("incoming changes".to_string()),
+            staged: true,
+        };
+
+        assert_eq!(change.path, "src/main.rs");
+        assert_eq!(change.status, FileStatus::Modified);
+        assert!(change.staged);
+    }
+
+    #[test]
+    fn test_module_status_variants() {
+        let pending = ModuleStatus::Pending;
+        let current = ModuleStatus::Current;
+        let completed = ModuleStatus::Completed;
+
+        assert!(matches!(pending, ModuleStatus::Pending));
+        assert!(matches!(current, ModuleStatus::Current));
+        assert!(matches!(completed, ModuleStatus::Completed));
+    }
+
+    #[test]
+    fn test_developer_creation() {
+        let dev = Developer {
+            id: Uuid::new_v4(),
+            name: "Alice".to_string(),
+        };
+
+        assert_eq!(dev.name, "Alice");
+        let id_string = dev.id.to_string();
+        assert!(!id_string.is_empty());
+    }
+
+    #[test]
+    fn test_module_creation_and_progress() {
+        let module_id = Uuid::new_v4();
+        let dev_id = Uuid::new_v4();
+
+        let module = Module {
+            id: module_id,
+            name: "Authentication".to_string(),
+            owner: Some(dev_id),
+            status: ModuleStatus::Current,
+            progress_score: 50,
+        };
+
+        assert_eq!(module.name, "Authentication");
+        assert_eq!(module.progress_score, 50);
+        assert_eq!(module.status, ModuleStatus::Current);
+        assert_eq!(module.owner, Some(dev_id));
+    }
+
+    #[test]
+    fn test_project_creation() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "MyProject".to_string(),
+            description: "Test project".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: Vec::new(),
+        };
+
+        assert_eq!(project.name, "MyProject");
+        assert_eq!(project.branch, "main");
+        assert_eq!(project.changes.len(), 0);
+    }
+
+    #[test]
+    fn test_fake_store_new() {
+        let store = FakeStore::new();
+        assert_eq!(store.projects.len(), 0);
+    }
+
+    #[test]
+    fn test_fake_store_add_project() {
+        let mut store = FakeStore::new();
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+        assert_eq!(store.projects.len(), 1);
+    }
+
+    #[test]
+    fn test_bump_progress_on_commit() {
+        let mut store = FakeStore::new();
+        let module = Module {
+            id: Uuid::new_v4(),
+            name: "Core".to_string(),
+            owner: None,
+            status: ModuleStatus::Current,
+            progress_score: 50,
+        };
+
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: vec![module],
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+        store.bump_progress_on_commit(0);
+
+        let bumped_score = store.projects[0].modules[0].progress_score;
+        assert!(bumped_score > 50, "Progress should increase");
+        assert!(bumped_score <= 100, "Progress should not exceed 100");
+    }
+
+    #[test]
+    fn test_bump_progress_on_commit_caps_at_100() {
+        let mut store = FakeStore::new();
+        let module = Module {
+            id: Uuid::new_v4(),
+            name: "Core".to_string(),
+            owner: None,
+            status: ModuleStatus::Current,
+            progress_score: 95,
+        };
+
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: vec![module],
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+        store.bump_progress_on_commit(0);
+
+        let bumped_score = store.projects[0].modules[0].progress_score;
+        assert_eq!(bumped_score, 100, "Progress should be capped at 100");
+    }
+
+    #[test]
+    fn test_bump_progress_ignores_non_current_modules() {
+        let mut store = FakeStore::new();
+        let module_pending = Module {
+            id: Uuid::new_v4(),
+            name: "Pending".to_string(),
+            owner: None,
+            status: ModuleStatus::Pending,
+            progress_score: 0,
+        };
+
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: vec![module_pending],
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+        store.bump_progress_on_commit(0);
+
+        let score = store.projects[0].modules[0].progress_score;
+        assert_eq!(score, 0, "Pending module should not be bumped");
+    }
+
+    #[test]
+    fn test_add_developer() {
+        let mut store = FakeStore::new();
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+        let added = store.add_developer(0, "Bob".to_string());
+        assert!(added.is_some(), "Should successfully add developer");
+        assert_eq!(store.projects[0].developers.len(), 1);
+    }
+
+    #[test]
+    fn test_add_developer_duplicate() {
+        let mut store = FakeStore::new();
+        let developer = Developer {
+            id: Uuid::new_v4(),
+            name: "Bob".to_string(),
+        };
+
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: vec![developer],
+        };
+
+        store.projects.push(project);
+        let added = store.add_developer(0, "Bob".to_string());
+        assert!(
+            added.is_some(),
+            "add_developer should still return Some even for duplicate names"
+        );
+        assert_eq!(
+            store.projects[0].developers.len(),
+            2,
+            "Duplicate is added (no deduplication in add_developer)"
+        );
+    }
+
+    #[test]
+    fn test_auto_populate_developers_from_git() {
+        let mut store = FakeStore::new();
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: Vec::new(),
+        };
+
+        store.projects.push(project);
+
+        let committers = vec![
+            "Alice <alice@example.com>".to_string(),
+            "Bob <bob@example.com>".to_string(),
+        ];
+
+        store.auto_populate_developers_from_git(0, committers);
+        assert_eq!(store.projects[0].developers.len(), 2);
+    }
+
+    #[test]
+    fn test_auto_populate_developers_no_duplicates() {
+        let mut store = FakeStore::new();
+        let developer = Developer {
+            id: Uuid::new_v4(),
+            name: "Alice <alice@example.com>".to_string(),
+        };
+
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            branch: "main".to_string(),
+            changes: Vec::new(),
+            modules: Vec::new(),
+            developers: vec![developer],
+        };
+
+        store.projects.push(project);
+
+        let committers = vec![
+            "Alice <alice@example.com>".to_string(),
+            "Bob <bob@example.com>".to_string(),
+        ];
+
+        store.auto_populate_developers_from_git(0, committers);
+        assert_eq!(
+            store.projects[0].developers.len(),
+            2,
+            "Only new developer should be added"
+        );
     }
 }
