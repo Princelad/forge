@@ -5,6 +5,9 @@ use git2::{DiffFormat, DiffOptions, IndexAddOption, Repository, Signature, Statu
 
 use crate::data::{Change, FileStatus};
 
+/// Commit info: (hash, author, date, message, files_changed)
+pub type CommitData = (String, String, String, String, Vec<String>);
+
 pub struct GitClient {
     repo: Repository,
     pub workdir: PathBuf,
@@ -253,14 +256,12 @@ impl GitClient {
         let mut revwalk = self.repo.revwalk()?;
         revwalk.push_head()?;
 
-        for oid in revwalk.take(100) {
+        for oid in revwalk.take(100).flatten() {
             // Limit to last 100 commits
-            if let Ok(oid) = oid {
-                if let Ok(commit) = self.repo.find_commit(oid) {
-                    let author = commit.author();
-                    if let Some(name) = author.name() {
-                        names.insert(name.to_string());
-                    }
+            if let Ok(commit) = self.repo.find_commit(oid) {
+                let author = commit.author();
+                if let Some(name) = author.name() {
+                    names.insert(name.to_string());
                 }
             }
         }
@@ -324,51 +325,46 @@ impl GitClient {
         Ok(())
     }
 
-    /// Get commit history
-    pub fn get_commit_history(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<(String, String, String, String, Vec<String>)>> {
+    /// Commit info: (hash, author, date, message, files_changed)
+    pub fn get_commit_history(&self, limit: usize) -> Result<Vec<CommitData>> {
         let mut commits = Vec::new();
         let mut revwalk = self.repo.revwalk()?;
         revwalk.push_head()?;
 
-        for oid in revwalk.take(limit) {
-            if let Ok(oid) = oid {
-                if let Ok(commit) = self.repo.find_commit(oid) {
-                    let hash = oid.to_string();
-                    let author = commit.author().name().unwrap_or("Unknown").to_string();
-                    let time = commit.time();
-                    let date = chrono::DateTime::from_timestamp(time.seconds(), 0)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                        .unwrap_or_else(|| "Unknown date".to_string());
-                    let message = commit.message().unwrap_or("").to_string();
+        for oid in revwalk.take(limit).flatten() {
+            if let Ok(commit) = self.repo.find_commit(oid) {
+                let hash = oid.to_string();
+                let author = commit.author().name().unwrap_or("Unknown").to_string();
+                let time = commit.time();
+                let date = chrono::DateTime::from_timestamp(time.seconds(), 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "Unknown date".to_string());
+                let message = commit.message().unwrap_or("").to_string();
 
-                    // Get files changed
-                    let mut files = Vec::new();
-                    if let Ok(tree) = commit.tree() {
-                        let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-                        if let Ok(diff) =
-                            self.repo
-                                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
-                        {
-                            diff.foreach(
-                                &mut |delta, _| {
-                                    if let Some(path) = delta.new_file().path() {
-                                        files.push(path.to_string_lossy().to_string());
-                                    }
-                                    true
-                                },
-                                None,
-                                None,
-                                None,
-                            )
-                            .ok();
-                        }
+                // Get files changed
+                let mut files = Vec::new();
+                if let Ok(tree) = commit.tree() {
+                    let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+                    if let Ok(diff) =
+                        self.repo
+                            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+                    {
+                        diff.foreach(
+                            &mut |delta, _| {
+                                if let Some(path) = delta.new_file().path() {
+                                    files.push(path.to_string_lossy().to_string());
+                                }
+                                true
+                            },
+                            None,
+                            None,
+                            None,
+                        )
+                        .ok();
                     }
-
-                    commits.push((hash, author, date, message, files));
                 }
+
+                commits.push((hash, author, date, message, files));
             }
         }
 
