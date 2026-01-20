@@ -786,16 +786,18 @@ Forge automatically discovers and loads your **current Git repository** on start
 - [x] Theme switching (Default/HighContrast)
 - [x] Search with match count display
 - [x] Module owner name resolution on board
+- [x] Branch switching/creation/deletion actions (checkout/create/delete)
+- [x] Module/developer create/edit/assign flows in the UI
 
-### In Progress / Not Yet Implemented
+### Not Yet Implemented
 
-- [ ] Branch switching/creation/deletion actions
-- [ ] Module/developer create/edit/assign flows in the UI
-- [ ] Remote operations (push/pull/fetch)
+- [ ] **Remote operations (push/pull/fetch)** — **CRITICAL for real-world usage**
 - [ ] Multi-repo support / repo picker
-- [ ] Auto-population of modules from Git data
-- [ ] Advanced merge conflict resolution
-- [ ] AI/ML inference features
+- [ ] Auto-population of modules from Git data (commit pattern analysis)
+- [ ] Advanced merge conflict resolution (apply resolution + commit)
+- [ ] AI/ML inference features (commit message generation, etc.)
+
+**For detailed feature gap analysis, see [MVP_GAPS.md](MVP_GAPS.md)**
 
 ---
 
@@ -921,7 +923,7 @@ pub struct App {
 
 ## Progress Log
 
-- **2026-01-20** — GitHub Copilot — Phase 5: Performance Profiling Complete — Implemented criterion benchmark suite with 11 benchmarks measuring Git operations (discover_repo 9.65ms, list_changes O(n), commit history O(n) with 50-commit plateau) and data operations (developer management in nanoseconds, auto-population O(n) with duplicate dedup). Identified I/O as bottleneck: repository discovery dominates (9.65ms) vs all other ops in microseconds. Created benchmark infrastructure with HTML reports. Status: All 11 benchmarks executing successfully, performance baselines established, scaling profiles documented — Next: MVP Gaps Review and Remote Operations Implementation
+- **2026-01-20** — GitHub Copilot — Phase 5: MVP Gaps Analysis Complete — Conducted comprehensive feature audit identifying 32 fully implemented features vs 5 missing features. Created MVP_GAPS.md with detailed analysis showing Forge is 85% feature-complete for local workflows. Identified critical gap: Remote operations (push/pull/fetch) is the ONLY blocking feature preventing real-world usage. Updated README to correct "Not Yet Implemented" section (removed outdated branch/module management entries which are fully implemented). Recommended next steps: Implement remote operations (7-10 day estimate) starting with fetch, then push, then pull. Status: Ready for remote operations implementation — Next: git fetch implementation
 
 ---
 
