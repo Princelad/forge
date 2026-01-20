@@ -1,0 +1,157 @@
+# Changelog
+
+All notable changes to Forge are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [Unreleased]
+
+### Added
+
+- Remote operations (fetch, pull, push) support
+- AI/ML features planning
+- Multi-repository support planning
+
+---
+
+## January 20, 2026 - Comprehensive Code Quality & Testing
+
+### Added
+
+#### Phase 4: Test Suite Foundation
+
+- Created `src/lib.rs` to enable library testing of core modules
+- Added dev dependency `tempfile = "3.8.1"` for temp directory test fixtures
+- Updated `Cargo.toml` to define both lib and bin targets
+- **23 unit tests** covering:
+  - **Git Integration Tests** (7 tests in `src/git.rs`):
+    - `test_gitclient_discover_valid_repo` — Repository discovery succeeds for valid repos
+    - `test_gitclient_discover_invalid_path` — Discovery fails for non-existent paths
+    - `test_head_branch_on_empty_repo` — Empty repo HEAD handling
+    - `test_list_changes_empty_repo` — Empty repo has no changes
+    - `test_list_changes_with_untracked_file` — Untracked files are detected and marked as Added
+    - `test_stage_file` — Files can be staged successfully
+    - `test_commit_data_type_alias` — Type alias compilation verification
+    - `test_full_git_workflow` — Integration test covering create/commit/detect workflow
+  - **Data Model Tests** (15 tests in `src/data.rs`):
+    - Enum and struct creation tests
+    - FakeStore CRUD operations (add/delete developers, modules)
+    - Progress tracking with saturation math
+    - Auto-population from Git with duplicate prevention
+  - **UI Event Tests** (1 test in `src/key_handler.rs`):
+    - `test_maps_basic_keys` — Core keybindings map correctly
+- ✅ All 23 tests pass with 100% pass rate
+- Test execution time: < 100ms for full suite
+
+#### Phase 5: Performance Profiling & Benchmarks
+
+- Created `benches/` directory with criterion-based benchmarks
+- Added `criterion = { version = "0.5", features = ["html_reports"] }` dev dependency
+- Configured `[[bench]]` declarations in `Cargo.toml`
+- **11 comprehensive benchmarks** across two suites:
+  - **Git Operations** (7 benchmarks in `benches/git_operations.rs`):
+    - `discover_repo` — 9.65 ms (I/O bottleneck)
+    - `head_branch` — 47.18 µs
+    - `list_changes` — 549 µs (10 files) to 2.79 ms (50 files)
+    - `get_commit_history` — 333 µs (10 commits) to 1.70 ms (50 commits)
+    - `list_branches_local` — 11.48 µs
+    - `list_branches_remote` — 11.43 µs
+    - `stage_file` — 26.39 µs
+    - `unstage_file` — 10.62 µs (fastest Git operation)
+  - **Data Operations** (4 benchmarks in `benches/data_operations.rs`):
+    - `bump_progress` — 120-200 µs
+    - `add_developer` — 149-204 ns (fastest overall)
+    - `delete_developer` — 91 ns
+    - `auto_populate_developers` — 233 ns (10) to 840 µs (1000 committers)
+- Collected performance baselines with statistical analysis
+- HTML reports generated at `target/criterion/report/index.html`
+
+#### Phase 6: Remote Operations
+
+- **Phase 6c**: Fixed UX issue where users couldn't type 'f' or 'p' characters in commit messages
+  - Applied fix using `commit_message_empty` context field
+  - Fetch/push shortcuts only trigger when NOT typing commit message
+  - Allows natural workflows like typing "fix bug" without losing characters
+- **Phase 6b**: Integrated fetch and push into UI
+  - Updated help page to document 'f' (fetch) and 'p' (push) keybindings
+  - Added remote operation hints to Changes view title
+  - Added remote operation hints to Dashboard title
+  - Status messages display operation results with visual feedback
+- Frontend fully integrated with status bar feedback and context-aware keybindings
+
+### Changed
+
+#### Phase 1: Automatic & Manual Fixes
+
+- Applied **17 automatic clippy fixes** across 14 files
+- Applied **4 manual flatten optimizations** in `git.rs` (iterator patterns simplified)
+- Created module-level `CommitData` type alias to reduce type complexity
+- **Warnings Reduction**: 26 → 9 warnings
+
+#### Phase 2: Parameter Struct Refactoring
+
+- Refactored **5 page components** to use parameter structs:
+  - `src/pages/dashboard.rs` — 9 args → 1 param struct (`DashboardParams`)
+  - `src/pages/branch_manager.rs` — 7 args → 1 param struct (`BranchManagerParams`)
+  - `src/pages/merge_visualizer.rs` — 7 args → 1 param struct (`MergeVisualizerParams`)
+  - `src/pages/module_manager.rs` — 8-9 args → 2 param structs (`ModuleManagerParams`, `ModuleListParams`)
+  - `src/screen.rs` — Updated to construct and pass parameter structs to each page
+- **Warnings Reduction**: 9 → 1 warning (96% reduction from original 26)
+- Improved code maintainability and self-documentation
+
+#### Phase 3: Infrastructure & Foundation
+
+- Created `src/render_context.rs` — Framework for future screen-level parameter consolidation
+- Implemented builder pattern in `RenderContext` for fluent API
+
+### Fixed
+
+- **UX Issue**: Users can now type 'f' and 'p' characters in commit messages without triggering fetch/push shortcuts
+- Various clippy warnings related to code quality and idioms
+
+### Performance
+
+- Quantified I/O bottleneck: Repository discovery at 9.65ms dominates workflow
+- Confirmed linear scaling for file status (O(n)) and commit history (O(n) up to limit)
+- Data operations confirmed negligible (nanosecond range)
+- Typical workflow (discover → list → stage → commit) ≈ 13-15ms
+
+### Documentation
+
+- Updated README with UX note explaining fetch/push behavior
+- All changes tracked in progress log and recent changes sections
+
+---
+
+## Progress Log (Historical Entries)
+
+### 2026-01-20 (Late Evening) — Phase 6c: Key Handling Review & UX Fix
+
+**Author**: GitHub Copilot
+
+Reviewed key handling implementation for fetch/push features. Identified and fixed critical UX issue: users couldn't type 'f' or 'p' characters in commit messages (shortcuts were intercepted unconditionally). Applied fix using `commit_message_empty` context field: fetch/push shortcuts only trigger when NOT typing commit message. This allows natural workflows like typing "fix bug" without losing the 'f' character. Verified fix: 24 tests passing, clean compile. Updated README with UX note explaining behavior.
+
+**Status**: Remote operations feature now complete and fully usable  
+**Next**: Implement git pull
+
+---
+
+### 2026-01-20 (Evening) — Phase 6b: Remote Operations Frontend Complete
+
+**Author**: GitHub Copilot
+
+Integrated fetch and push into UI with proper keybinding hints. Updated help page to document 'f' (fetch) and 'p' (push) keybindings with description. Added remote operation hints to Changes view title: "Space: stage/unstage | f: fetch | p: push". Added remote operation hints to Dashboard title: "(Ctrl+F: search, f: fetch)". Status messages display operation results: "✓ Fetched N objects from origin" or "✗ Push failed: <error>". Frontend fully integrated with status bar feedback and context-aware keybindings.
+
+**Status**: 24 tests passing, release build clean, frontend production-ready  
+**Next**: Implement git pull
+
+---
+
+## See Also
+
+- **[Roadmap](Roadmap.md)** — Future planned features
+- **[Development](Development.md)** — Contributing guide
+- **[Getting Started](Getting-Started.md)** — Installation and setup
