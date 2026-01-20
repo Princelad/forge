@@ -14,6 +14,12 @@ pub struct MainMenu {
     pub menu_items: Vec<&'static str>,
 }
 
+impl Default for MainMenu {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MainMenu {
     pub fn new() -> Self {
         Self {

@@ -25,6 +25,12 @@ pub enum KeyAction {
 #[derive(Debug)]
 pub struct KeyHandler;
 
+impl Default for KeyHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeyHandler {
     pub fn new() -> Self {
         Self

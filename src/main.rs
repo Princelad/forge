@@ -98,6 +98,12 @@ pub struct App {
     cached_commits: Vec<CommitInfo>,
 }
 
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App {
     pub fn new() -> Self {
         let mut app = Self {

@@ -9,6 +9,12 @@ use ratatui::{
 #[derive(Debug)]
 pub struct HelpPage;
 
+impl Default for HelpPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HelpPage {
     pub fn new() -> Self {
         Self

@@ -8,6 +8,12 @@ use ratatui::{
 #[derive(Debug)]
 pub struct SettingsPage;
 
+impl Default for SettingsPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SettingsPage {
     pub fn new() -> Self {
         Self

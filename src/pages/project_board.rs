@@ -9,6 +9,12 @@ use ratatui::{
 #[derive(Debug)]
 pub struct ProjectBoard;
 
+impl Default for ProjectBoard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProjectBoard {
     pub fn new() -> Self {
         Self
@@ -67,11 +73,10 @@ impl ProjectBoard {
             if !current_items.is_empty() {
                 current_state.select(Some(selected_item.min(current_items.len() - 1)));
             }
-        } else if selected_column == 2 {
-            if !done_items.is_empty() {
+        } else if selected_column == 2
+            && !done_items.is_empty() {
                 done_state.select(Some(selected_item.min(done_items.len() - 1)));
             }
-        }
 
         let block_style_focused = Style::new().yellow();
 

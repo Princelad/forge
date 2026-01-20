@@ -18,6 +18,12 @@ pub struct CommitInfo {
 #[derive(Debug)]
 pub struct CommitHistory;
 
+impl Default for CommitHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CommitHistory {
     pub fn new() -> Self {
         Self

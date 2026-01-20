@@ -22,6 +22,12 @@ pub enum BranchManagerMode {
 #[derive(Debug)]
 pub struct BranchManager;
 
+impl Default for BranchManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BranchManager {
     pub fn new() -> Self {
         Self

@@ -276,12 +276,10 @@ impl GitClient {
         // List local branches
         if local {
             let branch_iter = self.repo.branches(Some(git2::BranchType::Local))?;
-            for branch in branch_iter {
-                if let Ok((branch, _)) = branch {
-                    if let Some(name) = branch.name()? {
-                        let is_current = name == current_branch;
-                        branches.push((name.to_string(), is_current));
-                    }
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    let is_current = name == current_branch;
+                    branches.push((name.to_string(), is_current));
                 }
             }
         }
@@ -289,11 +287,9 @@ impl GitClient {
         // List remote branches
         if remote {
             let branch_iter = self.repo.branches(Some(git2::BranchType::Remote))?;
-            for branch in branch_iter {
-                if let Ok((branch, _)) = branch {
-                    if let Some(name) = branch.name()? {
-                        branches.push((name.to_string(), false));
-                    }
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    branches.push((name.to_string(), false));
                 }
             }
         }

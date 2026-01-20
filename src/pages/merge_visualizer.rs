@@ -34,6 +34,12 @@ impl MergePaneFocus {
 #[derive(Debug)]
 pub struct MergeVisualizer;
 
+impl Default for MergeVisualizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MergeVisualizer {
     pub fn new() -> Self {
         Self
@@ -105,7 +111,7 @@ impl MergeVisualizer {
                 let local = c
                     .local_preview
                     .as_deref()
-                    .unwrap_or_else(|| c.diff_preview.as_str());
+                    .unwrap_or(c.diff_preview.as_str());
                 let incoming = c
                     .incoming_preview
                     .as_deref()

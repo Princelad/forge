@@ -19,6 +19,12 @@ pub enum ModuleManagerMode {
 #[derive(Debug)]
 pub struct ModuleManager;
 
+impl Default for ModuleManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModuleManager {
     pub fn new() -> Self {
         Self

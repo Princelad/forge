@@ -34,6 +34,12 @@ pub struct Screen {
     help: HelpPage,
 }
 
+impl Default for Screen {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Screen {
     pub fn new() -> Self {
         Self {
