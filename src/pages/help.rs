@@ -113,6 +113,14 @@ impl HelpPage {
                 Span::raw(" to stage/unstage file"),
             ]),
             Line::from(vec![
+                Span::styled("Remote", Style::new().bold().magenta()),
+                Span::raw("      "),
+                Span::styled("f", Style::new().bold()),
+                Span::raw(": Fetch,  "),
+                Span::styled("p", Style::new().bold()),
+                Span::raw(": Push"),
+            ]),
+            Line::from(vec![
                 Span::styled("Branches", Style::new().bold().magenta()),
                 Span::raw("   n: New, d: Delete, Enter: Switch"),
             ]),
@@ -125,12 +133,6 @@ impl HelpPage {
                 Span::raw("       Press "),
                 Span::styled("Enter", Style::new().bold()),
                 Span::raw(" to move item to next column"),
-            ]),
-            Line::from(vec![
-                Span::styled("Merge", Style::new().bold().magenta()),
-                Span::raw("        Use ← → to switch panes, "),
-                Span::styled("Enter", Style::new().bold()),
-                Span::raw(" to accept"),
             ]),
         ];
         frame.render_widget(

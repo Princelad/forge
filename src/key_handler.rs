@@ -19,6 +19,8 @@ pub enum KeyAction {
     Backspace,
     SwitchModuleList,
     ToggleStaging,
+    Fetch,
+    Push,
     None,
 }
 
@@ -286,16 +288,59 @@ impl ActionProcessor {
                         },
                     )
                 } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
-                    (
-                        ActionResult {
-                            should_quit: false,
-                            status_message: None,
-                        },
-                        ActionStateUpdate {
-                            commit_message_append: Some(c),
-                            ..Default::default()
-                        },
-                    )
+                    match c {
+                        'f' if ctx.commit_message_empty => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some("Fetching from origin...".into()),
+                            },
+                            ActionStateUpdate {
+                                fetch_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        'p' if ctx.commit_message_empty => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some("Pushing to origin...".into()),
+                            },
+                            ActionStateUpdate {
+                                push_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                commit_message_append: Some(c),
+                                ..Default::default()
+                            },
+                        ),
+                    }
+                } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Dashboard)
+                {
+                    match c {
+                        'f' => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some("Fetching from origin...".into()),
+                            },
+                            ActionStateUpdate {
+                                fetch_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    }
                 } else if ctx.focus == Focus::View
                     && matches!(ctx.current_view, AppMode::BranchManager)
                 {
@@ -675,6 +720,52 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             toggle_staging_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
+            KeyAction::Fetch => {
+                if ctx.focus == Focus::View
+                    && (matches!(ctx.current_view, AppMode::Dashboard | AppMode::Changes))
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Fetching from origin...".into()),
+                        },
+                        ActionStateUpdate {
+                            fetch_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
+            KeyAction::Push => {
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Pushing to origin...".into()),
+                        },
+                        ActionStateUpdate {
+                            push_requested: Some(()),
                             ..Default::default()
                         },
                     )
@@ -1276,6 +1367,10 @@ pub struct ActionStateUpdate {
 
     // File staging
     pub toggle_staging_requested: Option<()>,
+
+    // Remote operations
+    pub fetch_requested: Option<()>,
+    pub push_requested: Option<()>,
 }
 
 impl ActionStateUpdate {

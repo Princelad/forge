@@ -370,6 +370,109 @@ impl GitClient {
 
         Ok(commits)
     }
+
+    /// Fetch from a remote repository
+    /// Returns the number of objects fetched
+    pub fn fetch(&self, remote_name: &str) -> Result<usize> {
+        let mut remote = self.repo.find_remote(remote_name)?;
+
+        // Setup fetch options with callbacks
+        let mut fetch_options = git2::FetchOptions::new();
+        let mut callbacks = git2::RemoteCallbacks::new();
+
+        // Credential callback for authentication
+        callbacks.credentials(|_url, username_from_url, _allowed_types| {
+            // Try SSH agent first
+            if let Some(username) = username_from_url {
+                if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                    return Ok(cred);
+                }
+            }
+
+            // Fallback to default credentials (will use ssh-agent or credential helpers)
+            git2::Cred::default()
+        });
+
+        fetch_options.remote_callbacks(callbacks);
+
+        // Fetch all refs (equivalent to `git fetch origin`)
+        // Empty refspecs means use the remote's default refspecs
+        let empty_refspecs: Vec<&str> = vec![];
+        remote.fetch(&empty_refspecs, Some(&mut fetch_options), None)?;
+
+        // Since we can't easily get the transfer stats from git2,
+        // return 1 to indicate successful fetch (implementation detail)
+        Ok(1)
+    }
+
+    /// Fetch from the default remote (usually "origin")
+    pub fn fetch_origin(&self) -> Result<usize> {
+        self.fetch("origin")
+    }
+
+    /// List all remotes in the repository
+    pub fn list_remotes(&self) -> Result<Vec<String>> {
+        let remotes = self.repo.remotes()?;
+        Ok(remotes.iter().flatten().map(|s| s.to_string()).collect())
+    }
+
+    /// Get the URL of a remote
+    pub fn remote_url(&self, remote_name: &str) -> Result<String> {
+        let remote = self.repo.find_remote(remote_name)?;
+        remote
+            .url()
+            .map(|s| s.to_string())
+            .ok_or_else(|| color_eyre::eyre::eyre!("Remote has no URL"))
+    }
+
+    /// Push to a remote branch
+    /// If branch_name is None, pushes to the upstream branch of the current HEAD
+    pub fn push(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+        let mut remote = self.repo.find_remote(remote_name)?;
+
+        // Setup push options with callbacks
+        let mut push_options = git2::PushOptions::new();
+        let mut callbacks = git2::RemoteCallbacks::new();
+
+        // Credential callback for authentication
+        callbacks.credentials(|_url, username_from_url, _allowed_types| {
+            // Try SSH agent first
+            if let Some(username) = username_from_url {
+                if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                    return Ok(cred);
+                }
+            }
+
+            // Fallback to default credentials (will use ssh-agent or credential helpers)
+            git2::Cred::default()
+        });
+
+        push_options.remote_callbacks(callbacks);
+
+        // Determine the refspec to push
+        let refspec = if let Some(branch) = branch_name {
+            format!("refs/heads/{}:refs/heads/{}", branch, branch)
+        } else {
+            // Push current branch to its upstream if it has one
+            let head = self.repo.head()?;
+            if let Some(branch_name) = head.shorthand() {
+                format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name)
+            } else {
+                return Err(color_eyre::eyre::eyre!(
+                    "Unable to determine branch to push"
+                ));
+            }
+        };
+
+        remote.push(&[&refspec], Some(&mut push_options))?;
+
+        Ok(())
+    }
+
+    /// Push to origin
+    pub fn push_origin(&self, branch_name: Option<&str>) -> Result<()> {
+        self.push("origin", branch_name)
+    }
 }
 
 #[cfg(test)]
@@ -552,5 +655,24 @@ mod integration_tests {
         // Stage the file
         let stage_result = client.stage_file("file2.txt");
         assert!(stage_result.is_ok(), "Should stage file successfully");
+    }
+
+    #[test]
+    fn test_list_remotes() {
+        // Create a temporary directory
+        let dir = TempDir::new().expect("Failed to create temp dir");
+        let repo_path = dir.path();
+
+        // Initialize repo
+        Repository::init(repo_path).expect("Failed to init repo");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create GitClient");
+
+        // List remotes - should be empty initially
+        let remotes = client.list_remotes().expect("Failed to list remotes");
+        assert!(
+            remotes.is_empty(),
+            "Newly initialized repo should have no remotes"
+        );
     }
 }

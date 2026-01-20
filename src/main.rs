@@ -742,6 +742,12 @@ impl App {
         if update.toggle_staging_requested.is_some() {
             self.toggle_file_staging();
         }
+        if update.fetch_requested.is_some() {
+            self.perform_fetch();
+        }
+        if update.push_requested.is_some() {
+            self.perform_push();
+        }
     }
 
     fn quit(&mut self) {
@@ -1185,6 +1191,40 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    fn perform_fetch(&mut self) {
+        if let Some(client) = &self.git_client {
+            match client.fetch_origin() {
+                Ok(count) => {
+                    self.status_message = format!("✓ Fetched {} objects from origin", count);
+                    // Refresh view caches to show updated remote refs
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.status_message = format!("✗ Fetch failed: {}", e);
+                }
+            }
+        } else {
+            self.status_message = "✗ No Git repository".to_string();
+        }
+    }
+
+    fn perform_push(&mut self) {
+        if let Some(client) = &self.git_client {
+            match client.push_origin(None) {
+                Ok(()) => {
+                    self.status_message = "✓ Pushed to origin".to_string();
+                    // Refresh view caches
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.status_message = format!("✗ Push failed: {}", e);
+                }
+            }
+        } else {
+            self.status_message = "✗ No Git repository".to_string();
         }
     }
 

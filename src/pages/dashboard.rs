@@ -50,13 +50,13 @@ impl Dashboard {
 
         let title = if params.search_active {
             format!(
-                "Projects (search: {} · {}/{} matches)",
+                "Projects (search: {} · {}/{} matches) | Esc to exit search",
                 params.search_buffer,
                 params.projects.len(),
                 params.total_count
             )
         } else {
-            "Projects".to_string()
+            "Projects (Ctrl+F: search, f: fetch)".to_string()
         };
 
         frame.render_stateful_widget(
