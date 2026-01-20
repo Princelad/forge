@@ -70,7 +70,6 @@ Core question:
 
 - Project list (left pane, selectable)
 - Project metadata display (right pane):
-
   - Name, branch, module count, developer count, description
 
 - Selection syncs with menu when tabbing between views
@@ -78,13 +77,11 @@ Core question:
 ### 2. Project Board
 
 - Kanban-style layout with three columns:
-
   - **Pending** — Modules not yet started
   - **Current** — In-progress modules with assigned developer and progress %
   - **Completed** — Finished modules
 
 - Module cards display:
-
   - Module name
   - Owner (resolved developer name or "unassigned")
   - Progress percentage (0–100%)
@@ -94,7 +91,6 @@ Core question:
 ### 3. Changes Page
 
 - Left pane: List of changed files **from Git status** with staging indicators:
-
   - `[✓]` — Staged for commit
   - `[ ]` — Unstaged
   - `[M]` — Modified files
@@ -112,7 +108,6 @@ Core question:
 ### 4. Commit History
 
 - Two-pane layout:
-
   - **Left**: Commit list (hash, first-line message, author, date)
   - **Right**: Commit details (full message + files changed)
 
@@ -126,7 +121,6 @@ Core question:
 ### 6. Merge Visualizer
 
 - Three-pane layout:
-
   - **Left**: List of changed files from Git
   - **Center**: Local version diff preview
   - **Right**: Incoming version diff preview
@@ -236,7 +230,6 @@ forge/
 The app tracks **two focus modes**:
 
 1. **Menu Focus**
-
    - Top-bar menu is active (highlighted in yellow/bold)
    - Tab/Up/Down cycle or navigate menu items
    - Enter selects an item and switches view
@@ -486,6 +479,23 @@ pub struct App {
 - Project management practitioners
 - Open-source contributors
 - System design reviewers
+
+---
+
+## Recent Changes
+
+### January 20, 2026 - Code Quality Improvements
+
+**Session**: Project Review & Next Steps
+
+- ✅ **Automated clippy fixes applied** (17 auto-fixes across 14 files)
+- ✅ **Manual flatten optimizations** in git.rs (4 iterator pattern improvements)
+- ✅ **Type complexity reduced** — Created module-level `CommitData` type alias
+- ✅ **RenderContext infrastructure created** — Foundation for future parameter refactoring
+- 📋 **6 remaining clippy warnings** (too_many_arguments) — Architectural improvements planned
+  - These are design-level warnings related to UI rendering parameter counts
+  - Future refactoring will consolidate via parameter structs or builder patterns
+- ✅ **Build compiles cleanly** with no errors; warnings are lint-level only
 
 ---
 

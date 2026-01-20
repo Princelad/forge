@@ -6,16 +6,15 @@ use ratatui::{
     Frame,
 };
 
-use crate::data::FakeStore;
 use crate::key_handler::KeyAction;
-use crate::pages::branch_manager::{BranchInfo, BranchManager, BranchManagerMode};
+use crate::pages::branch_manager::BranchManager;
 use crate::pages::changes::ChangesPage;
-use crate::pages::commit_history::{CommitHistory, CommitInfo};
+use crate::pages::commit_history::CommitHistory;
 use crate::pages::dashboard::Dashboard;
 use crate::pages::help::HelpPage;
 use crate::pages::main_menu::MainMenu;
-use crate::pages::merge_visualizer::{MergePaneFocus, MergeVisualizer};
-use crate::pages::module_manager::{ModuleManager, ModuleManagerMode};
+use crate::pages::merge_visualizer::MergeVisualizer;
+use crate::pages::module_manager::ModuleManager;
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 use crate::{AppMode, AppSettings, Focus, Theme};
@@ -61,7 +60,7 @@ impl Screen {
         frame: &mut Frame,
         mode: AppMode,
         status: &str,
-        store: &FakeStore,
+        store: &crate::data::FakeStore,
         selected_project: usize,
         selected_change: usize,
         commit_msg: &str,
@@ -70,7 +69,7 @@ impl Screen {
         selected_board_column: usize,
         selected_board_item: usize,
         merge_file_index: usize,
-        merge_focus: MergePaneFocus,
+        merge_focus: crate::pages::merge_visualizer::MergePaneFocus,
         selected_setting: usize,
         show_help: bool,
         project_scroll: usize,
@@ -82,22 +81,22 @@ impl Screen {
         settings_options: &[String],
         total_projects: usize,
         settings: &AppSettings,
-        accepted_merge: Option<MergePaneFocus>,
+        accepted_merge: Option<crate::pages::merge_visualizer::MergePaneFocus>,
         workdir: Option<&std::path::Path>,
         // New page parameters
-        module_manager_mode: ModuleManagerMode,
+        module_manager_mode: crate::pages::module_manager::ModuleManagerMode,
         selected_module: usize,
         selected_developer: usize,
         module_input_buffer: &str,
         module_scroll: usize,
-        branch_manager_mode: BranchManagerMode,
+        branch_manager_mode: crate::pages::branch_manager::BranchManagerMode,
         selected_branch: usize,
         branch_input_buffer: &str,
         branch_scroll: usize,
-        cached_branches: &[BranchInfo],
+        cached_branches: &[crate::pages::branch_manager::BranchInfo],
         selected_commit: usize,
         commit_scroll: usize,
-        cached_commits: &[CommitInfo],
+        cached_commits: &[crate::pages::commit_history::CommitInfo],
     ) {
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")

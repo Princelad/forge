@@ -7,6 +7,7 @@ pub mod data;
 pub mod git;
 pub mod key_handler;
 pub mod pages;
+pub mod render_context;
 pub mod screen;
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
