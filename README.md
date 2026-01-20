@@ -1,153 +1,110 @@
 # Forge
 
 **Forge** is a developer-first, terminal-based Git-aware project management system.
-It integrates version control context with lightweight task tracking in a single TUI workflow, allowing developers to manage code changes, view diffs, and track project progress without leaving the terminal.
 
-Forge loads your current Git repository automatically and presents:
+Manage Git repositories, view diffs, track tasks, and collaborate with your team—all from your terminal without leaving your coding flow.
 
-- **Real file changes** from `git status`
-- **Live diff previews** for modified files
-- **Current branch** and repository metadata
-- **Project board** for task tracking (manual module management)
-- **Merge conflict visualization** with resolution tracking
-- **Configurable themes** and settings
+## Quick Start
 
----
+```bash
+cargo build --release
+./target/release/forge
+```
 
-## Project Objective
+## Key Features
 
-Forge validates the usability of a **Git-integrated project board and change visualization system** through a **Text User Interface (TUI)**.
+- 🔀 **Git Integration** — Real-time file status and diff preview
+- 📋 **Project Board** — Kanban task tracking (Pending → Current → Completed)
+- 🔗 **Branch Management** — Create, switch, and delete branches
+- 📝 **Commit History** — Browse and inspect commits
+- 👥 **Team Management** — Track modules and developers
+- 🔀 **Merge Visualization** — Side-by-side conflict resolution
+- ⚙️ **Customizable** — Theme switching and settings
+- ⌨️ **Keyboard-Driven** — Fully navigable without mouse
 
-Core question:
+## Documentation
 
-> _Can a developer manage project context, tasks, and code changes from a single terminal interface without breaking their coding flow?_
+Complete documentation is available in the **[Wiki](https://github.com/yourusername/forge/wiki)**:
 
----
+- **[Getting Started](https://github.com/yourusername/forge/wiki/Getting-Started)** — Installation and first run
+- **[Features](https://github.com/yourusername/forge/wiki/Features)** — Complete feature overview
+- **[Keyboard Shortcuts](https://github.com/yourusername/forge/wiki/Keyboard-Shortcuts)** — Reference all keybindings
+- **[Architecture](https://github.com/yourusername/forge/wiki/Architecture)** — System design and structure
+- **[Development](https://github.com/yourusername/forge/wiki/Development)** — Contributing guide
+- **[Roadmap](https://github.com/yourusername/forge/wiki/Roadmap)** — Planned features
+- **[FAQ](https://github.com/yourusername/forge/wiki/FAQ)** — Common questions
 
-## Current State
+## Requirements
 
-### Git Integration ✅
+- **Rust 1.70+** ([install here](https://rustup.rs/))
+- **Git 2.0+**
+- **Terminal** with 256-color support
 
-- Automatic repository discovery on startup
-- Real-time file status (`git status`)
-- Diff preview generation (`git diff`)
-- Branch detection from HEAD
-- Repository metadata (path, name, branch)
+## Build & Run
 
-### Implemented Features
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/forge.git
+cd forge
 
-- Terminal-based UI using **Rust + ratatui + git2**
-- Top-bar menu navigation with focus tracking
-- Real Git repository parsing and status display
-- **Selective file staging** with Space key to toggle individual files
-- Live staging and commit execution (commits only staged files) with status updates
-- **Branch operations**: switch, create, and delete branches with full Git integration
-- Commit history view (last 50 commits with author, date, message, files changed)
-- Branch manager view listing local branches with current-branch marker
-- **Module/developer CRUD**: create, edit, delete modules and developers from UI
-- **Auto-population**: developers are automatically populated from Git commit history
-- Module/developer persistence to `.forge` and progress persistence to `.git/forge`
-- Multi-pane layouts for complex views
-- Keyboard-driven interactions (Tab, arrows, Enter, Esc, Space for staging, n/e/d for CRUD)
-- Project search with live filtering (`Ctrl+F`)
-- Settings with theme switching (Default/HighContrast)
-- Merge resolution tracking with visual indicators
-- Help overlay with keybindings (`?`)
-- Focus-aware status bar with repo/settings badges
+# Build for development
+cargo build
 
-### Explicitly Not Yet Implemented
+# Build for production
+cargo build --release
 
-- Remote operations (push/pull/fetch)
-- Automated task inference from commits (module auto-population from commit patterns)
-- AI/ML features for commit message generation
+# Run in a Git repository
+cd /path/to/your/repo
+forge
+```
+
+## Usage
+
+1. **Navigate** with Tab and Arrow keys
+2. **Stage files** with Space
+3. **Commit** with Enter
+4. **View help** with `?`
+5. **Quit** with Ctrl+C
+
+See the **[Keyboard Shortcuts](https://github.com/yourusername/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
+
+## Project Status
+
+✅ **Implemented:**
+
+- Terminal UI with multi-pane layouts
+- Git status and diff viewing
+- File staging and committing
+- Branch operations
+- Commit history browser
+- Module and developer management
+- Merge conflict visualization
+- Settings and theme customization
+
+🔄 **Not Yet Implemented:**
+
+- Remote operations (push, pull, fetch)
+- AI/ML features
 - Multi-repository support
 
----
+See the **[Roadmap](https://github.com/yourusername/forge/wiki/Roadmap)** for future plans.
 
-## Key Screens / Views
+## Contributing
 
-### 1. Dashboard
+Contributions are welcome! See the **[Development](https://github.com/yourusername/forge/wiki/Development)** guide for:
 
-- Project list (left pane, selectable)
-- Project metadata display (right pane):
-  - Name, branch, module count, developer count, description
+- Setting up your development environment
+- Code quality standards
+- Testing and debugging
+- Git workflow
 
-- Selection syncs with menu when tabbing between views
+## License
 
-### 2. Project Board
-
-- Kanban-style layout with three columns:
-  - **Pending** — Modules not yet started
-  - **Current** — In-progress modules with assigned developer and progress %
-  - **Completed** — Finished modules
-
-- Module cards display:
-  - Module name
-  - Owner (resolved developer name or "unassigned")
-  - Progress percentage (0–100%)
-
-- Note: Modules/developers are manually managed (not yet auto-populated from Git)
-
-### 3. Changes Page
-
-- Left pane: List of changed files **from Git status** with staging indicators:
-  - `[✓]` — Staged for commit
-  - `[ ]` — Unstaged
-  - `[M]` — Modified files
-  - `[A]` — New/untracked files
-  - `[D]` — Deleted files
-
-- Right pane: **Real diff preview** from `git diff` for selected file
-- Bottom pane: Commit message input
-- Press `Space` to stage/unstage individual files
-- Press `Enter` to commit (only commits staged files)
-- Bottom pane: Commit message input
-  - Type freely; press Enter to stage all + commit when a Git repo is detected
-  - Status bar shows commit confirmation or error details
-
-### 4. Commit History
-
-- Two-pane layout:
-  - **Left**: Commit list (hash, first-line message, author, date)
-  - **Right**: Commit details (full message + files changed)
-
-- Shows up to the 50 most recent commits
-
-### 5. Branch Manager
-
-- Branch list with current branch highlighted
-- Local branches only; creation/switch/delete flows are visible but not yet wired
-
-### 6. Merge Visualizer
-
-- Three-pane layout:
-  - **Left**: List of changed files from Git
-  - **Center**: Local version diff preview
-  - **Right**: Incoming version diff preview
-
-- Navigate between panes with Left/Right arrows
-- Accept resolution with Enter (tracks choice with green border highlight)
-- Focused pane highlighted in yellow, accepted pane in green
-
-### 7. Settings
-
-- **Theme**: Default / High Contrast (applies to status bar styling)
-- **Notifications**: On / Off (placeholder)
-- **Autosync**: On / Off (placeholder)
-- Toggle with Enter, reflects immediately in UI
-
-### 8. Module Manager
-
-- Split view: Modules on the left, developers on the right
-- Reads persisted modules/developers (if present in `.forge`); editing/creation flows are not yet active
+GPL-3.0-only
 
 ---
 
-## Screenshots
-
-### Dashboard
-
-![Dashboard](screenshots/Board.png)
+**Need help?** Check the **[FAQ](https://github.com/yourusername/forge/wiki/FAQ)** or open an issue on GitHub.
 
 ### Changes
 
