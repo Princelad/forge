@@ -21,6 +21,7 @@ pub enum KeyAction {
     ToggleStaging,
     Fetch,
     Push,
+    Pull,
     None,
 }
 
@@ -62,6 +63,7 @@ impl KeyHandler {
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => KeyAction::Quit,
             (_, KeyCode::Char('?')) => KeyAction::Help,
             (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
+            (KeyModifiers::CONTROL, KeyCode::Char('l') | KeyCode::Char('L')) => KeyAction::Pull,
             (KeyModifiers::NONE, KeyCode::Tab) => {
                 // Handle Tab key for module manager list switching
                 if self.is_module_manager_context() {
@@ -842,6 +844,28 @@ impl ActionProcessor {
                     )
                 }
             }
+            KeyAction::Pull => {
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Pulling from origin...".into()),
+                        },
+                        ActionStateUpdate {
+                            pull_requested: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
             KeyAction::None => (
                 ActionResult {
                     should_quit: false,
@@ -1434,6 +1458,7 @@ pub struct ActionStateUpdate {
     // Remote operations
     pub fetch_requested: Option<()>,
     pub push_requested: Option<()>,
+    pub pull_requested: Option<()>,
 }
 
 impl ActionStateUpdate {

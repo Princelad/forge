@@ -748,6 +748,9 @@ impl App {
         if update.push_requested.is_some() {
             self.perform_push();
         }
+        if update.pull_requested.is_some() {
+            self.perform_pull();
+        }
     }
 
     fn quit(&mut self) {
@@ -1221,6 +1224,23 @@ impl App {
                 }
                 Err(e) => {
                     self.status_message = format!("✗ Push failed: {}", e);
+                }
+            }
+        } else {
+            self.status_message = "✗ No Git repository".to_string();
+        }
+    }
+
+    fn perform_pull(&mut self) {
+        if let Some(client) = &self.git_client {
+            match client.pull_origin(None) {
+                Ok(()) => {
+                    self.status_message = "✓ Pulled from origin".to_string();
+                    // Refresh view caches to show merged changes
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.status_message = format!("✗ Pull failed: {}", e);
                 }
             }
         } else {

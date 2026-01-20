@@ -570,6 +570,89 @@ impl GitClient {
     pub fn push_origin(&self, branch_name: Option<&str>) -> Result<()> {
         self.push("origin", branch_name)
     }
+
+    /// Pull from a remote branch (fetch + merge)
+    ///
+    /// # Behavior
+    ///
+    /// 1. Fetches from the specified remote using `git fetch <remote>`
+    /// 2. Merges the remote branch into the current local branch using `git merge`
+    /// 3. Uses fast-forward merge by default for clean integration
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Merge conflicts**: Returns error with git2 error code, does not auto-resolve
+    /// - **Detached HEAD**: Returns error - cannot merge on detached HEAD
+    /// - **No upstream branch**: Attempts to merge `remote/branch_name` pattern
+    /// - **Dirty working directory**: git2 handles this - may fail if conflicts would occur
+    /// - **No commits**: Will fail if either repo has no commits
+    ///
+    /// # Errors
+    ///
+    /// - Remote does not exist
+    /// - Current HEAD is detached
+    /// - Merge conflicts detected
+    /// - Repository structure is corrupted
+    pub fn pull(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+        // Step 1: Fetch from remote
+        self.fetch(remote_name)?;
+
+        // Step 2: Determine the branch to merge
+        let head = self.repo.head()?;
+        let current_branch = head
+            .shorthand()
+            .ok_or_else(|| color_eyre::eyre::eyre!("Cannot pull on detached HEAD"))?;
+
+        let merge_branch = branch_name.unwrap_or(current_branch);
+
+        // Step 3: Get the remote tracking branch reference
+        let refname = format!("refs/remotes/{}/{}", remote_name, merge_branch);
+        let merge_ref = self.repo.find_reference(&refname)?;
+        let merge_oid = merge_ref
+            .target()
+            .ok_or_else(|| color_eyre::eyre::eyre!("Remote branch {} not found", refname))?;
+
+        let merge_commit = self.repo.find_commit(merge_oid)?;
+
+        // Step 4: Perform merge
+        let mut index = self
+            .repo
+            .merge_commits(&head.peel_to_commit()?, &merge_commit, None)?;
+
+        // Step 5: Check for conflicts
+        if index.has_conflicts() {
+            return Err(color_eyre::eyre::eyre!(
+                "Merge conflict detected: resolve conflicts and commit manually"
+            ));
+        }
+
+        // Step 6: Write merged index to tree
+        let tree_id = index.write_tree()?;
+        let tree = self.repo.find_tree(tree_id)?;
+
+        // Step 7: Create merge commit
+        let signature = self.repo.signature()?;
+        let merge_msg = format!(
+            "Merge remote-tracking branch '{}/{}'",
+            remote_name, merge_branch
+        );
+
+        self.repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            &merge_msg,
+            &tree,
+            &[&head.peel_to_commit()?, &merge_commit],
+        )?;
+
+        Ok(())
+    }
+
+    /// Pull from the default remote (usually "origin")
+    pub fn pull_origin(&self, branch_name: Option<&str>) -> Result<()> {
+        self.pull("origin", branch_name)
+    }
 }
 
 #[cfg(test)]
