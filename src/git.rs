@@ -1,3 +1,38 @@
+//! Git operations and repository management.
+//!
+//! # Error Handling & Edge Cases
+//!
+//! This module uses libgit2 for all Git operations and returns `color_eyre::Result`
+//! for proper error propagation. Known edge cases and limitations:
+//!
+//! ## Corrupted Repository Handling
+//!
+//! **Current Behavior:**
+//! - Repository corruption is detected during `discover()` and propagated as errors
+//! - Operations on corrupted repos will fail with git2 error codes
+//! - No automatic recovery or repair attempts are made
+//! - UI layer should handle errors gracefully and display user-friendly messages
+//!
+//! **Known Edge Cases:**
+//! 1. **Missing or corrupted HEAD**: `head_branch()` returns `None`, operations may fail
+//! 2. **Corrupted index**: `list_changes()`, `stage_file()`, and `commit_all()` will error
+//! 3. **Missing objects**: Diff operations may fail silently, returning empty strings
+//! 4. **Invalid references**: Branch operations may fail with obscure error messages
+//! 5. **Locked index**: Concurrent Git operations can cause `.git/index.lock` conflicts
+//!
+//! **Recommended Improvements** (see Roadmap):
+//! - Add `fn check_repo_health() -> Result<RepoHealth>` to diagnose issues
+//! - Implement graceful degradation (read-only mode when index is corrupted)
+//! - Better error messages mapping git2 errors to user-actionable guidance
+//! - Add `fn repair_index()` for common corruption patterns
+//!
+//! ## Error Propagation Strategy
+//!
+//! - All public methods return `Result<T>` or `Option<T>` for nullable operations
+//! - Callers should use `?` operator or `.unwrap_or_default()` with fallbacks
+//! - UI should never panic on Git errors - display errors in status bar instead
+//! - Benchmark code tracks errors via `is_err()` checks (see benches/git_operations.rs)
+
 use std::path::{Path, PathBuf};
 
 use color_eyre::eyre::Result;
@@ -14,6 +49,23 @@ pub struct GitClient {
 }
 
 impl GitClient {
+    /// Discover a Git repository starting from the given path.
+    ///
+    /// Walks up the directory tree to find a `.git` directory.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Corrupted repo**: Returns `Err` if `.git` directory is malformed
+    /// - **Bare repo**: Handles bare repositories by using repo path as workdir
+    /// - **Submodules**: Discovers parent repo, not submodule (libgit2 behavior)
+    /// - **Missing workdir**: Returns error if workdir cannot be determined
+    ///
+    /// # Errors
+    ///
+    /// - Path does not exist or is not accessible
+    /// - No Git repository found in path or parent directories
+    /// - Repository structure is corrupted
+    /// - Unable to determine working directory
     pub fn discover(start: impl AsRef<Path>) -> Result<Self> {
         let repo = Repository::discover(start)?;
         let workdir = repo
@@ -24,6 +76,16 @@ impl GitClient {
         Ok(Self { repo, workdir })
     }
 
+    /// Get the current branch name.
+    ///
+    /// Returns `None` in edge cases rather than erroring.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Detached HEAD**: Returns `None` (HEAD points to commit, not branch)
+    /// - **Empty repo**: Returns `None` (no commits or HEAD yet)
+    /// - **Corrupted HEAD**: Returns `None` (cannot read `.git/HEAD`)
+    /// - **Initial state**: Returns `None` before first commit
     pub fn head_branch(&self) -> Option<String> {
         self.repo
             .head()
@@ -31,6 +93,23 @@ impl GitClient {
             .and_then(|h| h.shorthand().map(|s| s.to_string()))
     }
 
+    /// List all changes in the working directory and staging area.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Corrupted index**: Returns `Err` - caller should display error to user
+    /// - **Large repos**: May be slow (1000s of files) - consider showing spinner
+    /// - **Untracked files**: Included by default (can be filtered by caller)
+    /// - **Ignored files**: Excluded (per `.gitignore` rules)
+    /// - **Submodules**: Shown as modified files, not expanded
+    /// - **Invalid UTF-8**: Paths with invalid UTF-8 are skipped (logged to stderr)
+    /// - **Missing objects**: Diffs may be empty if referenced objects are missing
+    ///
+    /// # Errors
+    ///
+    /// - Index is locked by another process (`.git/index.lock` exists)
+    /// - Filesystem permissions prevent reading files
+    /// - Repository structure is corrupted
     pub fn list_changes(&self) -> Result<Vec<Change>> {
         let mut opts = StatusOptions::new();
         opts.include_untracked(true)
@@ -218,6 +297,23 @@ impl GitClient {
         Ok(Signature::now(&name, &email)?)
     }
 
+    /// Commit all staged changes with the given message.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Empty commit**: Returns `Err` if no changes are staged
+    /// - **First commit**: Handles initial commit (no parent) correctly
+    /// - **Merge state**: May fail if repository is in merge/rebase state
+    /// - **Invalid signature**: Uses fallback signature if git config incomplete
+    /// - **Corrupted index**: Returns `Err` - caller should handle gracefully
+    /// - **Locked index**: Fails with "index is locked" error
+    ///
+    /// # Errors
+    ///
+    /// - No changes are staged
+    /// - Cannot create signature (invalid git config)
+    /// - Index is locked or corrupted
+    /// - Cannot write tree or commit object
     pub fn commit_all(&self, message: &str) -> Result<git2::Oid> {
         let mut index = self.repo.index()?;
         let tree_id = index.write_tree()?;

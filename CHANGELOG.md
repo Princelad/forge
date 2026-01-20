@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Documentation**: Comprehensive edge case documentation for corrupted repository handling
+  - Added module-level documentation in `src/git.rs` explaining error handling strategy
+  - Documented 5 common corruption scenarios: missing HEAD, corrupted index, missing objects, invalid refs, locked index
+  - Added method-level documentation for `discover()`, `head_branch()`, `list_changes()`, `commit_all()`
+  - Created detailed FAQ entry in `docs/wiki/FAQ.md` with recovery procedures
+  - Documented recommended improvements and prevention strategies
+  - All current behavior and limitations are now explicitly documented
 - Remote operations (fetch, pull, push) support
 - AI/ML features planning
 - Multi-repository support planning
