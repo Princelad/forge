@@ -172,7 +172,7 @@ impl App {
                 let changes = client.list_changes().unwrap_or_default();
                 let project = data::Project {
                     id: uuid::Uuid::nil(),
-                    name: repo_name.clone(),
+                    name: repo_name,
                     description: format!("Git repo at {}", workdir.display()),
                     branch,
                     changes,
@@ -181,8 +181,8 @@ impl App {
                 };
                 app.store.projects = vec![project];
                 app.status_message = format!("Git: loaded status from {}", workdir.display());
-                app.git_workdir = Some(workdir.clone());
                 app.git_client = Some(client);
+                app.git_workdir = Some(workdir);
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);

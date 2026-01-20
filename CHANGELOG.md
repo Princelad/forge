@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added warning messages to stderr when errors occur during benchmarking
   - Prevents masking performance regressions caused by errors
   - Zero performance impact on successful operations
+- Optimized `.clone()` usage to reduce unnecessary allocations
+  - `src/git.rs`: Use `as_ref()` instead of cloning `Option<String>` values for diff previews
+  - `src/main.rs`: Removed duplicate `workdir.clone()` and `repo_name.clone()` calls
+  - Moved ownership where possible instead of cloning
+  - All tests passing - no functional changes
 
 ### Added
 

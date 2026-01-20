@@ -61,8 +61,9 @@ impl GitClient {
                 .or_else(|| self.diff_for_path(&path));
             let incoming_preview = self.diff_head_to_index_for_path(&path);
             let diff_preview = local_preview
-                .clone()
-                .or_else(|| incoming_preview.clone())
+                .as_ref()
+                .or(incoming_preview.as_ref())
+                .map(|s| s.to_string())
                 .unwrap_or_else(|| "(no diff)".into());
 
             let staged = status.is_index_new()
