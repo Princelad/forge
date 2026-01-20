@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use forge::{Developer, Store, Module, ModuleStatus, Project};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use forge::{Developer, Module, ModuleStatus, Project, Store};
+use std::hint::black_box;
 use uuid::Uuid;
 
 /// Create a store with N modules and M developers
