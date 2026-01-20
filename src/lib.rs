@@ -1,4 +1,5 @@
 // Library for testable modules
+pub mod async_task;
 pub mod data;
 pub mod git;
 

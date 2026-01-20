@@ -3,12 +3,14 @@ use std::path::PathBuf;
 
 use ratatui::{DefaultTerminal, Frame};
 
+pub mod async_task;
 pub mod data;
 pub mod git;
 pub mod key_handler;
 pub mod pages;
 pub mod render_context;
 pub mod screen;
+use async_task::TaskManager;
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
 use pages::branch_manager::{BranchInfo, BranchManagerMode};
@@ -49,36 +51,129 @@ fn main() -> color_eyre::Result<()> {
     result
 }
 
+/// Main application state container
+///
+/// # Architecture Note
+///
+/// **Total Fields**: ~40 (acknowledged technical debt)
+///
+/// **Field Organization** (see groups below):
+/// - Core (5): running, screen, key_handler, status_message
+/// - Data (1): store (all project data)  
+/// - Git (2): git_client, git_workdir
+/// - Rendering (4): current_view, focus, menu_selected_index, show_help
+/// - Search (2): search_active, search_buffer
+/// - View-Specific State (23): selected_*_index, scroll, input_buffer fields for each view
+///
+/// **Future Refactoring** (Phase 8+):
+///
+/// This struct should be refactored into smaller state modules:
+///
+/// ```
+/// pub struct App {
+///     // Core state (10 fields)
+///     running: bool,
+///     screen: Screen,
+///     key_handler: KeyHandler,
+///     status_message: String,
+///     store: Store,
+///     settings: AppSettings,
+///     git_client: Option<GitClient>,
+///     git_workdir: Option<PathBuf>,
+///     settings: AppSettings,
+///     
+///     // Navigation state (5 fields)
+///     nav: NavigationState { current_view, focus, menu_index, show_help, ... },
+///     
+///     // View-specific state (8 modules, one per view)
+///     dashboard: DashboardState,
+///     changes: ChangesState,
+///     board: BoardState,
+///     merge: MergeState,
+///     modules: ModuleManagerState,
+///     branches: BranchManagerState,
+///     commits: CommitHistoryState,
+///     settings_view: SettingsState,
+/// }
+/// ```
+///
+/// **Benefits of Refactoring**:
+/// - Reduced field count per struct
+/// - Encapsulation of view-specific state
+/// - Easier testing of individual views
+/// - Clearer separation of concerns
+/// - Better code organization and maintainability
+///
+/// **Drawbacks to Consider**:
+/// - Requires updating ~500+ field references throughout codebase
+/// - Needs careful planning to maintain current behavior
+/// - Potential performance impact from extra indirection
+///
+/// **Recommended Approach**:
+/// 1. Create trait-based state modules for each view
+/// 2. Implement state migration helper methods
+/// 3. Use property accessor pattern for backward compatibility during transition
+/// 4. Migrate code view-by-view (dashboard → changes → ... → settings)
+/// 5. Full migration completion as Phase 8+ milestone
 pub struct App {
+    // ====================================================================
+    // Core Application State
+    // ====================================================================
     running: bool,
     screen: Screen,
     key_handler: KeyHandler,
+    status_message: String,
+    store: data::Store,
+    settings: AppSettings,
+    git_client: Option<git::GitClient>,
+    git_workdir: Option<PathBuf>,
+    task_manager: TaskManager,
+
+    // ====================================================================
+    // Navigation & Focus State
+    // ====================================================================
     current_view: AppMode,
     focus: Focus,
     menu_selected_index: usize,
-    status_message: String,
-    store: data::Store,
-    selected_project_index: usize,
-    selected_change_index: usize,
-    commit_message: String,
-    selected_board_column: usize,
-    selected_board_item: usize,
-    selected_merge_file_index: usize,
-    merge_focus: MergePaneFocus,
-    selected_setting_index: usize,
     show_help: bool,
-    // Scroll positions for list views
-    project_scroll: usize,
-    changes_scroll: usize,
-    merge_scroll: usize,
-    // Search functionality
     search_active: bool,
     search_buffer: String,
-    settings: AppSettings,
+
+    // ====================================================================
+    // Dashboard View State
+    // ====================================================================
+    selected_project_index: usize,
+    project_scroll: usize,
+
+    // ====================================================================
+    // Changes View State (Git staging/commit interface)
+    // ====================================================================
+    selected_change_index: usize,
+    commit_message: String,
+    changes_scroll: usize,
+
+    // ====================================================================
+    // Project Board View State (Kanban board)
+    // ====================================================================
+    selected_board_column: usize,
+    selected_board_item: usize,
+
+    // ====================================================================
+    // Merge Visualizer View State (3-pane conflict resolution)
+    // ====================================================================
+    selected_merge_file_index: usize,
+    merge_focus: MergePaneFocus,
+    merge_scroll: usize,
     merge_resolutions: HashMap<(usize, usize), MergePaneFocus>,
-    git_client: Option<git::GitClient>,
-    git_workdir: Option<PathBuf>,
-    // Module manager state
+
+    // ====================================================================
+    // Settings View State
+    // ====================================================================
+    selected_setting_index: usize,
+
+    // ====================================================================
+    // Module Manager View State (Modules & Developers)
+    // ====================================================================
     module_manager_mode: ModuleManagerMode,
     selected_module_index: usize,
     selected_developer_index: usize,
@@ -87,13 +182,19 @@ pub struct App {
     developer_scroll: usize,
     editing_module_id: Option<uuid::Uuid>,
     module_assign_mode: bool,
-    // Branch manager state
+
+    // ====================================================================
+    // Branch Manager View State
+    // ====================================================================
     branch_manager_mode: BranchManagerMode,
     selected_branch_index: usize,
     branch_input_buffer: String,
     branch_scroll: usize,
     cached_branches: Vec<BranchInfo>,
-    // Commit history state
+
+    // ====================================================================
+    // Commit History View State
+    // ====================================================================
     selected_commit_index: usize,
     commit_scroll: usize,
     cached_commits: Vec<CommitInfo>,
@@ -138,6 +239,7 @@ impl App {
             merge_resolutions: HashMap::new(),
             git_client: None,
             git_workdir: None,
+            task_manager: TaskManager::new(),
             // Initialize module manager state
             module_manager_mode: ModuleManagerMode::ModuleList,
             selected_module_index: 0,
@@ -212,8 +314,29 @@ impl App {
             if self.handle_action(action) {
                 self.quit();
             }
+
+            // Poll for completed background operations
+            self.poll_background_tasks();
         }
         Ok(())
+    }
+
+    /// Poll for completed background Git operations
+    fn poll_background_tasks(&mut self) {
+        if let Some(result) = self.task_manager.try_recv() {
+            match result {
+                Ok(status) => {
+                    self.status_message = format!("✓ {}", status);
+                    // Refresh view cache to show updated data
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    let friendly_error =
+                        git::GitClient::explain_error(&color_eyre::eyre::eyre!("{}", e));
+                    self.status_message = format!("✗ {}", friendly_error);
+                }
+            }
+        }
     }
 
     fn render(&mut self, frame: &mut Frame) {
