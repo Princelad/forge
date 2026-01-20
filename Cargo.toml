@@ -26,8 +26,15 @@ chrono = "0.4.42"
 
 [dev-dependencies]
 tempfile = "3.8.1"
+criterion = { version = "0.5", features = ["html_reports"] }
 
-# Read the optimization guideline for more details: https://ratatui.rs/recipes/apps/release-your-app/#optimizations
+[[bench]]
+name = "git_operations"
+harness = false
+
+[[bench]]
+name = "data_operations"
+harness = false
 [profile.release]
 codegen-units = 1
 lto = true
