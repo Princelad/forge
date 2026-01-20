@@ -1,7 +1,6 @@
 use crate::data::{Change, Project};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::Stylize,
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame,
 };

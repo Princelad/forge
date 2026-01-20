@@ -1,7 +1,7 @@
 use crate::data::Project;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Style, Stylize},
+    style::Style,
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame,
 };

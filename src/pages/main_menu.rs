@@ -1,6 +1,6 @@
 use ratatui::{
     layout::Rect,
-    style::{Style, Stylize},
+    style::Style,
     widgets::{Block, List, ListState},
     Frame,
 };
