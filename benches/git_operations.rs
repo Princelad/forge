@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use forge::GitClient;
+use std::cell::Cell;
 use std::fs;
 use tempfile::TempDir;
 
@@ -103,13 +104,24 @@ fn bench_list_changes(c: &mut Criterion) {
 
         let client = GitClient::discover(repo_path).expect("Failed to create client");
 
+        let error_count = Cell::new(0);
         group.bench_with_input(
             BenchmarkId::from_parameter(file_count),
             file_count,
             |b, _| {
-                b.iter(|| client.list_changes().ok());
+                b.iter(|| {
+                    if client.list_changes().is_err() {
+                        error_count.set(error_count.get() + 1);
+                    }
+                });
             },
         );
+        if error_count.get() > 0 {
+            eprintln!(
+                "Warning: list_changes had {} errors during benchmark",
+                error_count.get()
+            );
+        }
     }
     group.finish();
 }
@@ -122,13 +134,24 @@ fn bench_get_commit_history(c: &mut Criterion) {
         let temp_dir = create_test_repo_with_commits(*commit_count);
         let client = GitClient::discover(temp_dir.path()).expect("Failed to create client");
 
+        let error_count = Cell::new(0);
         group.bench_with_input(
             BenchmarkId::from_parameter(commit_count),
             commit_count,
             |b, _| {
-                b.iter(|| client.get_commit_history(black_box(50)).ok());
+                b.iter(|| {
+                    if client.get_commit_history(black_box(50)).is_err() {
+                        error_count.set(error_count.get() + 1);
+                    }
+                });
             },
         );
+        if error_count.get() > 0 {
+            eprintln!(
+                "Warning: get_commit_history had {} errors during benchmark",
+                error_count.get()
+            );
+        }
     }
     group.finish();
 }
@@ -138,13 +161,41 @@ fn bench_list_branches(c: &mut Criterion) {
     let temp_dir = create_test_repo_with_commits(1);
     let client = GitClient::discover(temp_dir.path()).expect("Failed to create client");
 
+    let error_count_local = Cell::new(0);
     c.bench_function("list_branches_local", |b| {
-        b.iter(|| client.list_branches(black_box(true), black_box(false)).ok());
+        b.iter(|| {
+            if client
+                .list_branches(black_box(true), black_box(false))
+                .is_err()
+            {
+                error_count_local.set(error_count_local.get() + 1);
+            }
+        });
     });
+    if error_count_local.get() > 0 {
+        eprintln!(
+            "Warning: list_branches_local had {} errors during benchmark",
+            error_count_local.get()
+        );
+    }
 
+    let error_count_remote = Cell::new(0);
     c.bench_function("list_branches_remote", |b| {
-        b.iter(|| client.list_branches(black_box(false), black_box(true)).ok());
+        b.iter(|| {
+            if client
+                .list_branches(black_box(false), black_box(true))
+                .is_err()
+            {
+                error_count_remote.set(error_count_remote.get() + 1);
+            }
+        });
     });
+    if error_count_remote.get() > 0 {
+        eprintln!(
+            "Warning: list_branches_remote had {} errors during benchmark",
+            error_count_remote.get()
+        );
+    }
 }
 
 /// Benchmark staging a file
@@ -158,9 +209,20 @@ fn bench_stage_file(c: &mut Criterion) {
 
     let client = GitClient::discover(repo_path).expect("Failed to create client");
 
+    let error_count = Cell::new(0);
     c.bench_function("stage_file", |b| {
-        b.iter(|| client.stage_file("test_stage.txt").ok());
+        b.iter(|| {
+            if client.stage_file("test_stage.txt").is_err() {
+                error_count.set(error_count.get() + 1);
+            }
+        });
     });
+    if error_count.get() > 0 {
+        eprintln!(
+            "Warning: stage_file had {} errors during benchmark",
+            error_count.get()
+        );
+    }
 }
 
 /// Benchmark unstaging a file
@@ -175,9 +237,20 @@ fn bench_unstage_file(c: &mut Criterion) {
     let client = GitClient::discover(repo_path).expect("Failed to create client");
     client.stage_file("test_unstage.txt").ok();
 
+    let error_count = Cell::new(0);
     c.bench_function("unstage_file", |b| {
-        b.iter(|| client.unstage_file("test_unstage.txt").ok());
+        b.iter(|| {
+            if client.unstage_file("test_unstage.txt").is_err() {
+                error_count.set(error_count.get() + 1);
+            }
+        });
     });
+    if error_count.get() > 0 {
+        eprintln!(
+            "Warning: unstage_file had {} errors during benchmark",
+            error_count.get()
+        );
+    }
 }
 
 criterion_group!(

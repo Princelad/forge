@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated all references in source files, tests, and benchmarks
   - All tests passing (33/33)
   - Breaking change for external API consumers
+- Improved benchmark error handling in `benches/git_operations.rs`
+  - Added error tracking with `Cell<u32>` for thread-safe counting
+  - Replaced silent `.ok()` calls with `is_err()` checks and error counting
+  - Added warning messages to stderr when errors occur during benchmarking
+  - Prevents masking performance regressions caused by errors
+  - Zero performance impact on successful operations
 
 ### Added
 
