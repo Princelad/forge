@@ -91,7 +91,67 @@ pub struct ActionResult {
     pub status_message: Option<String>,
 }
 
-/// Context passed to action handlers to enable decision-making
+/// Context passed to action handlers to enable decision-making.
+///
+/// # Input Mode Handling
+///
+/// The `commit_message_empty` field enables context-aware keybindings in the Changes view.
+/// This solves the conflict between shortcut keys ('f' for fetch, 'p' for push) and
+/// typing those same characters in the commit message input.
+///
+/// ## Current Design (Phase 6c - Jan 2026)
+///
+/// **Pattern**: Conditional shortcut activation based on input state
+/// - When commit message is empty: 'f' and 'p' trigger fetch/push
+/// - When commit message has content: 'f' and 'p' are typed literally
+///
+/// **Pros**:
+/// - Simple implementation (single boolean flag)
+/// - Intuitive UX: shortcuts work when input is unused
+/// - Minimal state management overhead
+/// - Works well for current two-shortcut use case
+///
+/// **Cons**:
+/// - Scales poorly with more shortcuts (would need more conditionals)
+/// - Implicit behavior - not obvious from code structure
+/// - Mixed concerns: input state affects command routing
+///
+/// ## Alternative: Explicit Input Mode State Machine
+///
+/// **Pattern**: Dedicated `InputMode` enum with explicit transitions
+/// ```rust
+/// enum InputMode {
+///     Normal,        // Shortcuts active, no text input
+///     Typing,        // All chars go to input buffer
+///     Search,        // Search-specific input mode
+/// }
+/// ```
+///
+/// **Pros**:
+/// - Explicit state transitions (escape to exit typing mode)
+/// - Scales better with more shortcuts and input contexts
+/// - Clear separation of concerns
+/// - Common pattern in TUI apps (vim-style modal editing)
+///
+/// **Cons**:
+/// - Requires user to explicitly enter/exit typing mode (less intuitive)
+/// - More state to manage (mode transitions, visual indicators)
+/// - Breaking UX change from current behavior
+///
+/// ## Recommendation
+///
+/// **Keep current design** for now because:
+/// 1. Only 2 shortcuts ('f'/'p') currently conflict with commit message input
+/// 2. Current UX is intuitive: "shortcuts work when I'm not typing"
+/// 3. No plans for many more single-character shortcuts in Changes view
+/// 4. Alternative would require modal editing learning curve
+///
+/// **Future consideration**: If more shortcuts are needed, evaluate:
+/// - Using multi-key chords (Ctrl+F, Ctrl+P) instead of single chars
+/// - Adding explicit "focus commit message" action (Tab key?)
+/// - Implementing full modal editing if app grows significantly
+///
+/// See: CHANGELOG.md Phase 6c, src/key_handler.rs lines 292, 302, 819
 #[derive(Debug, Clone)]
 pub struct ActionContext {
     pub focus: Focus,
@@ -289,6 +349,9 @@ impl ActionProcessor {
                     )
                 } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
                     match c {
+                        // Conditional shortcuts: only active when commit message is empty
+                        // This prevents 'f' and 'p' from triggering fetch/push while typing
+                        // Alternative considered: explicit input mode (see ActionContext docs)
                         'f' if ctx.commit_message_empty => (
                             ActionResult {
                                 should_quit: false,

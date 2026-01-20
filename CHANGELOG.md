@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Created detailed FAQ entry in `docs/wiki/FAQ.md` with recovery procedures
   - Documented recommended improvements and prevention strategies
   - All current behavior and limitations are now explicitly documented
+- **Documentation**: Commit message shortcut architecture analysis and design rationale
+  - Evaluated Phase 6c's `commit_message_empty` conditional shortcut pattern
+  - Documented pros/cons of current design vs explicit input mode state machine
+  - Added comprehensive comparison in `src/key_handler.rs` ActionContext documentation
+  - **Recommendation**: Keep current design - intuitive UX, only 2 conflicting shortcuts
+  - Future alternatives documented: multi-key chords, explicit focus, modal editing
+  - Design decision preserved for future maintainers (see key_handler.rs lines 90-155)
 - Remote operations (fetch, pull, push) support
 - AI/ML features planning
 - Multi-repository support planning
