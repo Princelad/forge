@@ -19,6 +19,17 @@ pub enum BranchManagerMode {
     CreateBranch,
 }
 
+/// Parameters for BranchManager rendering
+#[derive(Debug, Clone)]
+pub struct BranchManagerParams<'a> {
+    pub area: Rect,
+    pub branches: &'a [BranchInfo],
+    pub selected: usize,
+    pub scroll: usize,
+    pub mode: BranchManagerMode,
+    pub input_buffer: &'a str,
+}
+
 #[derive(Debug)]
 pub struct BranchManager;
 
@@ -33,28 +44,31 @@ impl BranchManager {
         Self
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        branches: &[BranchInfo],
-        selected: usize,
-        scroll: usize,
-        mode: BranchManagerMode,
-        input_buffer: &str,
-    ) {
-        match mode {
+    pub fn render(&self, frame: &mut Frame, params: BranchManagerParams) {
+        match params.mode {
             BranchManagerMode::List => {
-                self.render_branch_list(frame, area, branches, selected, scroll);
+                self.render_branch_list(
+                    frame,
+                    params.area,
+                    params.branches,
+                    params.selected,
+                    params.scroll,
+                );
             }
             BranchManagerMode::CreateBranch => {
                 let layout = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Min(0), Constraint::Length(7)])
-                    .split(area);
+                    .split(params.area);
 
-                self.render_branch_list(frame, layout[0], branches, selected, scroll);
-                self.render_create_form(frame, layout[1], input_buffer);
+                self.render_branch_list(
+                    frame,
+                    layout[0],
+                    params.branches,
+                    params.selected,
+                    params.scroll,
+                );
+                self.render_create_form(frame, layout[1], params.input_buffer);
             }
         }
     }

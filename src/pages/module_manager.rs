@@ -16,6 +16,29 @@ pub enum ModuleManagerMode {
     EditModule,
 }
 
+/// Parameters for ModuleManager rendering
+#[derive(Debug, Clone)]
+pub struct ModuleManagerParams<'a> {
+    pub area: Rect,
+    pub project: &'a Project,
+    pub mode: ModuleManagerMode,
+    pub selected_module: usize,
+    pub selected_developer: usize,
+    pub input_buffer: &'a str,
+    pub scroll: usize,
+}
+
+/// Parameters for ModuleList rendering
+#[derive(Debug, Clone)]
+pub struct ModuleListParams<'a> {
+    pub area: Rect,
+    pub modules: &'a [Module],
+    pub developers: &'a [Developer],
+    pub selected: usize,
+    pub scroll: usize,
+    pub is_focused: bool,
+}
+
 #[derive(Debug)]
 pub struct ModuleManager;
 
@@ -30,70 +53,52 @@ impl ModuleManager {
         Self
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        project: &Project,
-        mode: ModuleManagerMode,
-        selected_module: usize,
-        selected_developer: usize,
-        input_buffer: &str,
-        scroll: usize,
-    ) {
+    pub fn render(&self, frame: &mut Frame, params: ModuleManagerParams) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(area);
+            .split(params.area);
 
         // Left: Module list
-        self.render_module_list(
-            frame,
-            layout[0],
-            &project.modules,
-            &project.developers,
-            selected_module,
-            scroll,
-            mode == ModuleManagerMode::ModuleList,
-        );
+        let list_params = ModuleListParams {
+            area: layout[0],
+            modules: &params.project.modules,
+            developers: &params.project.developers,
+            selected: params.selected_module,
+            scroll: params.scroll,
+            is_focused: params.mode == ModuleManagerMode::ModuleList,
+        };
+        self.render_module_list(frame, list_params);
 
         // Right: Developer list or input form
-        match mode {
+        match params.mode {
             ModuleManagerMode::CreateModule | ModuleManagerMode::EditModule => {
-                self.render_module_form(frame, layout[1], input_buffer, mode);
+                self.render_module_form(frame, layout[1], params.input_buffer, params.mode);
             }
             ModuleManagerMode::CreateDeveloper => {
-                self.render_developer_form(frame, layout[1], input_buffer);
+                self.render_developer_form(frame, layout[1], params.input_buffer);
             }
             _ => {
                 self.render_developer_list(
                     frame,
                     layout[1],
-                    &project.developers,
-                    selected_developer,
+                    &params.project.developers,
+                    params.selected_developer,
                     0,
-                    mode == ModuleManagerMode::DeveloperList,
+                    params.mode == ModuleManagerMode::DeveloperList,
                 );
             }
         }
     }
 
-    fn render_module_list(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        modules: &[Module],
-        developers: &[Developer],
-        selected: usize,
-        scroll: usize,
-        is_focused: bool,
-    ) {
-        let items: Vec<ListItem> = modules
+    fn render_module_list(&self, frame: &mut Frame, params: ModuleListParams) {
+        let items: Vec<ListItem> = params
+            .modules
             .iter()
             .map(|m| {
                 let owner_name = m
                     .owner
-                    .and_then(|id| developers.iter().find(|d| d.id == id))
+                    .and_then(|id| params.developers.iter().find(|d| d.id == id))
                     .map(|d| d.name.as_str())
                     .unwrap_or("Unassigned");
 
@@ -125,10 +130,10 @@ impl ModuleManager {
             .collect();
 
         let mut state = ListState::default()
-            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
-            .with_offset(scroll);
+            .with_selected(Some(params.selected.min(items.len().saturating_sub(1))))
+            .with_offset(params.scroll);
 
-        let title = if is_focused {
+        let title = if params.is_focused {
             "Modules [FOCUSED]"
         } else {
             "Modules"
@@ -136,14 +141,14 @@ impl ModuleManager {
 
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(title).style(if is_focused {
+                .block(Block::bordered().title(title).style(if params.is_focused {
                     Style::new().fg(Color::Cyan)
                 } else {
                     Style::new()
                 }))
                 .highlight_style(Style::new().reversed())
                 .highlight_symbol(">> "),
-            area,
+            params.area,
             &mut state,
         );
     }

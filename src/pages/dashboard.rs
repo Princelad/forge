@@ -6,6 +6,18 @@ use ratatui::{
     Frame,
 };
 
+/// Parameters for Dashboard rendering
+#[derive(Debug, Clone)]
+pub struct DashboardParams<'a> {
+    pub area: Rect,
+    pub projects: &'a [&'a Project],
+    pub selected: usize,
+    pub scroll: usize,
+    pub search_active: bool,
+    pub search_buffer: &'a str,
+    pub total_count: usize,
+}
+
 #[derive(Debug)]
 pub struct Dashboard;
 
@@ -20,37 +32,28 @@ impl Dashboard {
         Self
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        projects: &[&Project],
-        selected: usize,
-        scroll: usize,
-        search_active: bool,
-        search_buffer: &str,
-        total_count: usize,
-    ) {
+    pub fn render(&self, frame: &mut Frame, params: DashboardParams) {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(32), Constraint::Min(0)])
-            .split(area);
+            .split(params.area);
 
         // Left: project list with scrolling
-        let items: Vec<ListItem> = projects
+        let items: Vec<ListItem> = params
+            .projects
             .iter()
             .map(|p| ListItem::new(p.name.clone()))
             .collect();
         let mut state = ListState::default()
-            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
-            .with_offset(scroll);
+            .with_selected(Some(params.selected.min(items.len().saturating_sub(1))))
+            .with_offset(params.scroll);
 
-        let title = if search_active {
+        let title = if params.search_active {
             format!(
                 "Projects (search: {} · {}/{} matches)",
-                search_buffer,
-                projects.len(),
-                total_count
+                params.search_buffer,
+                params.projects.len(),
+                params.total_count
             )
         } else {
             "Projects".to_string()
@@ -67,8 +70,9 @@ impl Dashboard {
         );
 
         // Right: details
-        let details = projects
-            .get(selected)
+        let details = params
+            .projects
+            .get(params.selected)
             .map(|p| {
                 format!(
                     "Name: {}\nBranch: {}\n\nModules: {}\nDevelopers: {}\n\n{}",

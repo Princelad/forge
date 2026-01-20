@@ -150,16 +150,18 @@ impl Screen {
 
         // Render the content page based on mode
         match mode {
-            AppMode::Dashboard => self.dashboard.render(
-                frame,
-                content_area,
-                filtered_projects,
-                selected_project,
-                project_scroll,
-                search_active,
-                search_buffer,
-                total_projects,
-            ),
+            AppMode::Dashboard => {
+                let params = crate::pages::dashboard::DashboardParams {
+                    area: content_area,
+                    projects: filtered_projects,
+                    selected: selected_project,
+                    scroll: project_scroll,
+                    search_active,
+                    search_buffer,
+                    total_count: total_projects,
+                };
+                self.dashboard.render(frame, params);
+            }
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
@@ -183,28 +185,28 @@ impl Screen {
                 );
             }
             AppMode::BranchManager => {
-                self.branch_manager.render(
-                    frame,
-                    content_area,
-                    cached_branches,
-                    selected_branch,
-                    branch_scroll,
-                    branch_manager_mode,
-                    branch_input_buffer,
-                );
+                let params = crate::pages::branch_manager::BranchManagerParams {
+                    area: content_area,
+                    branches: cached_branches,
+                    selected: selected_branch,
+                    scroll: branch_scroll,
+                    mode: branch_manager_mode,
+                    input_buffer: branch_input_buffer,
+                };
+                self.branch_manager.render(frame, params);
             }
             AppMode::MergeVisualizer => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.merge.render(
-                        frame,
-                        content_area,
-                        p,
-                        merge_file_index,
-                        merge_focus,
-                        merge_scroll,
-                        accepted_merge,
-                    );
+                    let params = crate::pages::merge_visualizer::MergeVisualizerParams {
+                        area: content_area,
+                        project: p,
+                        selected_file: merge_file_index,
+                        pane_focus: merge_focus,
+                        scroll: merge_scroll,
+                        accepted: accepted_merge,
+                    };
+                    self.merge.render(frame, params);
                 }
             }
             AppMode::ProjectBoard => {
@@ -223,16 +225,16 @@ impl Screen {
             AppMode::ModuleManager => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.module_manager.render(
-                        frame,
-                        content_area,
-                        p,
-                        module_manager_mode,
+                    let params = crate::pages::module_manager::ModuleManagerParams {
+                        area: content_area,
+                        project: p,
+                        mode: module_manager_mode,
                         selected_module,
                         selected_developer,
-                        module_input_buffer,
-                        module_scroll,
-                    );
+                        input_buffer: module_input_buffer,
+                        scroll: module_scroll,
+                    };
+                    self.module_manager.render(frame, params);
                 }
             }
             AppMode::Settings => self.settings.render(
