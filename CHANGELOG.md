@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: Renamed `FakeStore` to `Store` across entire codebase
+  - The "Fake" prefix was misleading - this is production-ready JSON persistence
+  - Updated all references in source files, tests, and benchmarks
+  - All tests passing (33/33)
+  - Breaking change for external API consumers
+
 ### Added
 
 - Remote operations (fetch, pull, push) support

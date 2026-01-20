@@ -1,10 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use forge::{Developer, FakeStore, Module, ModuleStatus, Project};
+use forge::{Developer, Store, Module, ModuleStatus, Project};
 use uuid::Uuid;
 
 /// Create a store with N modules and M developers
-fn create_store_with_data(num_modules: usize, num_developers: usize) -> FakeStore {
-    let mut store = FakeStore::new();
+fn create_store_with_data(num_modules: usize, num_developers: usize) -> Store {
+    let mut store = Store::new();
 
     let project = Project {
         id: Uuid::new_v4(),

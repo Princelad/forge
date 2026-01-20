@@ -2,7 +2,7 @@ use ratatui::{layout::Rect, Frame};
 
 use crate::pages::branch_manager::{BranchInfo, BranchManagerMode};
 use crate::pages::commit_history::CommitInfo;
-use crate::{data::FakeStore, AppMode, AppSettings, Focus, Theme};
+use crate::{data::Store, AppMode, AppSettings, Focus, Theme};
 
 /// Centralized context for rendering pages, reducing parameter proliferation
 pub struct RenderContext<'a> {
@@ -18,7 +18,7 @@ pub struct RenderContext<'a> {
     pub settings: &'a AppSettings,
 
     // Data store
-    pub store: &'a FakeStore,
+    pub store: &'a Store,
 
     // UI state for various pages
     pub selected_project: usize,
@@ -84,7 +84,7 @@ impl<'a> RenderContext<'a> {
         show_help: bool,
         theme: &'a Theme,
         settings: &'a AppSettings,
-        store: &'a FakeStore,
+        store: &'a Store,
         status: &'a str,
     ) -> Self {
         Self {

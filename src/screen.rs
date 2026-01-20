@@ -60,7 +60,7 @@ impl Screen {
         frame: &mut Frame,
         mode: AppMode,
         status: &str,
-        store: &crate::data::FakeStore,
+        store: &crate::data::Store,
         selected_project: usize,
         selected_change: usize,
         commit_msg: &str,

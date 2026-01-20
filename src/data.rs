@@ -53,11 +53,11 @@ pub struct Project {
 }
 
 #[derive(Debug, Default)]
-pub struct FakeStore {
+pub struct Store {
     pub projects: Vec<Project>,
 }
 
-impl FakeStore {
+impl Store {
     pub fn new() -> Self {
         Self {
             projects: Vec::new(),
@@ -401,13 +401,13 @@ mod tests {
 
     #[test]
     fn test_fake_store_new() {
-        let store = FakeStore::new();
+        let store = Store::new();
         assert_eq!(store.projects.len(), 0);
     }
 
     #[test]
     fn test_fake_store_add_project() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let project = Project {
             id: Uuid::new_v4(),
             name: "Test".to_string(),
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_bump_progress_on_commit() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let module = Module {
             id: Uuid::new_v4(),
             name: "Core".to_string(),
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_bump_progress_on_commit_caps_at_100() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let module = Module {
             id: Uuid::new_v4(),
             name: "Core".to_string(),
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_bump_progress_ignores_non_current_modules() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let module_pending = Module {
             id: Uuid::new_v4(),
             name: "Pending".to_string(),
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_add_developer() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let project = Project {
             id: Uuid::new_v4(),
             name: "Test".to_string(),
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_add_developer_duplicate() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let developer = Developer {
             id: Uuid::new_v4(),
             name: "Bob".to_string(),
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn test_auto_populate_developers_from_git() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let project = Project {
             id: Uuid::new_v4(),
             name: "Test".to_string(),
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn test_auto_populate_developers_no_duplicates() {
-        let mut store = FakeStore::new();
+        let mut store = Store::new();
         let developer = Developer {
             id: Uuid::new_v4(),
             name: "Alice <alice@example.com>".to_string(),
