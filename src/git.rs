@@ -653,6 +653,61 @@ impl GitClient {
     pub fn pull_origin(&self, branch_name: Option<&str>) -> Result<()> {
         self.pull("origin", branch_name)
     }
+    /// Check repository health and return diagnostics
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if repository is healthy
+    /// - `Ok(false)` if repository has issues (corrupted index, missing objects, etc.)
+    /// - `Err` if unable to determine health
+    ///
+    /// # Errors
+    ///
+    /// - Repository path is invalid
+    /// - Unable to access repository metadata
+    pub fn check_health(&self) -> Result<bool> {
+        // Try to open the index - most reliable corruption indicator
+        match self.repo.index() {
+            Ok(_) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    }
+
+    /// Get a user-friendly error message from a git2 error
+    ///
+    /// Maps common git2 errors to actionable user guidance
+    pub fn explain_error(e: &color_eyre::eyre::Report) -> String {
+        let error_str = e.to_string();
+
+        if error_str.contains("index") && error_str.contains("lock") {
+            "Git index is locked. Another Git operation may be running. Try again in a moment."
+                .to_string()
+        } else if error_str.contains("index") {
+            "Git index is corrupted. Try: 'rm .git/index.lock' and retry, or 'git fsck --full'"
+                .to_string()
+        } else if error_str.contains("HEAD") {
+            "Repository HEAD is invalid. Check 'git show-ref HEAD' or make an initial commit."
+                .to_string()
+        } else if error_str.contains("detached") {
+            "Cannot perform this operation on a detached HEAD. Checkout a branch first with 'git checkout'.".to_string()
+        } else if error_str.contains("conflict") {
+            "Merge conflicts detected. Resolve conflicts and commit manually.".to_string()
+        } else if error_str.contains("authentication") || error_str.contains("credentials") {
+            "Authentication failed. Check your SSH keys or Git credentials.".to_string()
+        } else if error_str.contains("remote") && error_str.contains("not found") {
+            "Remote repository not found. Check 'git remote -v' or network connectivity."
+                .to_string()
+        } else if error_str.contains("network") {
+            "Network error. Check your internet connection and remote URL.".to_string()
+        } else if error_str.contains("object") {
+            "Repository is missing objects. Try: 'git fsck --full' or clone again.".to_string()
+        } else if error_str.contains("corrupted") || error_str.contains("invalid") {
+            "Repository data is corrupted. Try: 'git fsck --full' and 'git gc --aggressive'."
+                .to_string()
+        } else {
+            format!("Git error: {}", error_str)
+        }
+    }
 }
 
 #[cfg(test)]

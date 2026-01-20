@@ -1206,7 +1206,8 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ Fetch failed: {}", e);
+                    let friendly_error = git::GitClient::explain_error(&e);
+                    self.status_message = format!("✗ {}", friendly_error);
                 }
             }
         } else {
@@ -1223,7 +1224,8 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ Push failed: {}", e);
+                    let friendly_error = git::GitClient::explain_error(&e);
+                    self.status_message = format!("✗ {}", friendly_error);
                 }
             }
         } else {
@@ -1240,7 +1242,8 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ Pull failed: {}", e);
+                    let friendly_error = git::GitClient::explain_error(&e);
+                    self.status_message = format!("✗ {}", friendly_error);
                 }
             }
         } else {

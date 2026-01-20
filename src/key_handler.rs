@@ -22,6 +22,7 @@ pub enum KeyAction {
     Fetch,
     Push,
     Pull,
+    TerminalResized,
     None,
 }
 
@@ -51,7 +52,7 @@ impl KeyHandler {
             // it's important to check KeyEventKind::Press to avoid handling key release events
             Event::Key(key) if key.kind == KeyEventKind::Press => Ok(self.on_key_event(key)),
             Event::Mouse(_) => Ok(KeyAction::None),
-            Event::Resize(_, _) => Ok(KeyAction::None),
+            Event::Resize(_, _) => Ok(KeyAction::TerminalResized),
             _ => Ok(KeyAction::None),
         }
     }
@@ -866,6 +867,13 @@ impl ActionProcessor {
                     )
                 }
             }
+            KeyAction::TerminalResized => (
+                ActionResult {
+                    should_quit: false,
+                    status_message: None,
+                },
+                ActionStateUpdate::none(),
+            ),
             KeyAction::None => (
                 ActionResult {
                     should_quit: false,

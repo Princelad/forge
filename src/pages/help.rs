@@ -118,7 +118,9 @@ impl HelpPage {
                 Span::styled("f", Style::new().bold()),
                 Span::raw(": Fetch,  "),
                 Span::styled("p", Style::new().bold()),
-                Span::raw(": Push"),
+                Span::raw(": Push,  "),
+                Span::styled("Ctrl+l", Style::new().bold()),
+                Span::raw(": Pull"),
             ]),
             Line::from(vec![
                 Span::styled("Branches", Style::new().bold().magenta()),
