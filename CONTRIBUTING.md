@@ -4,7 +4,7 @@ Thank you for your interest in contributing to Forge! We welcome contributions f
 
 ## Quick Links
 
-For comprehensive development information, please see the **[Development Wiki](docs/wiki/Development.md)**.
+For comprehensive development information, please see the **[Development Wiki](https://github.com/Princelad/forge/wiki/Development)**.
 
 The Development wiki covers:
 
@@ -47,7 +47,7 @@ The Development wiki covers:
    ```
 
 2. **Make your changes**:
-   - Follow the code quality standards in the [Development wiki](docs/wiki/Development.md)
+   - Follow the code quality standards in the [Development wiki](https://github.com/Princelad/forge/wiki/Development)
    - Add tests for new functionality
    - Run `cargo clippy` to check for warnings
    - Run `cargo fmt` to format your code
@@ -94,9 +94,9 @@ Before submitting a pull request:
 
 ## Need Help?
 
-- **[Development Wiki](docs/wiki/Development.md)** — Comprehensive development guide
-- **[Architecture Wiki](docs/wiki/Architecture.md)** — System design and structure
-- **[FAQ Wiki](docs/wiki/FAQ.md)** — Common questions
+- **[Development Wiki](https://github.com/Princelad/forge/wiki/Development)** — Comprehensive development guide
+- **[Architecture Wiki](https://github.com/Princelad/forge/wiki/Architecture)** — System design and structure
+- **[FAQ Wiki](https://github.com/Princelad/forge/wiki/FAQ)** — Common questions
 - **GitHub Issues** — Ask questions or report bugs
 
 ## Code of Conduct

@@ -26,18 +26,18 @@ cargo build --release
 
 ## Documentation
 
-📚 **[Complete Documentation →](docs/wiki/Home.md)**
+📚 **[Complete Documentation →](https://github.com/Princelad/forge/wiki)**
 
-- **[Getting Started](docs/wiki/Getting-Started.md)** — Installation and first run
-- **[Features](docs/wiki/Features.md)** — Complete feature overview
-- **[Keyboard Shortcuts](docs/wiki/Keyboard-Shortcuts.md)** — All keybindings
-- **[Architecture](docs/wiki/Architecture.md)** — System design
-- **[Development](docs/wiki/Development.md)** — Contributing guide
-- **[API Reference](docs/wiki/API-Reference.md)** — Core types and functions
-- **[Workflows](docs/wiki/Workflows.md)** — User workflows and interaction patterns
-- **[Performance](docs/wiki/Performance.md)** — Benchmarks and optimization
-- **[Roadmap](docs/wiki/Roadmap.md)** — Future plans
-- **[FAQ](docs/wiki/FAQ.md)** — Common questions
+- **[Getting Started](https://github.com/Princelad/forge/wiki/Getting-Started)** — Installation and first run
+- **[Features](https://github.com/Princelad/forge/wiki/Features)** — Complete feature overview
+- **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** — All keybindings
+- **[Architecture](https://github.com/Princelad/forge/wiki/Architecture)** — System design
+- **[Development](https://github.com/Princelad/forge/wiki/Development)** — Contributing guide
+- **[API Reference](https://github.com/Princelad/forge/wiki/API-Reference)** — Core types and functions
+- **[Workflows](https://github.com/Princelad/forge/wiki/Workflows)** — User workflows and interaction patterns
+- **[Performance](https://github.com/Princelad/forge/wiki/Performance)** — Benchmarks and optimization
+- **[Roadmap](https://github.com/Princelad/forge/wiki/Roadmap)** — Future plans
+- **[FAQ](https://github.com/Princelad/forge/wiki/FAQ)** — Common questions
 
 ## Requirements
 
@@ -68,11 +68,11 @@ cd /path/to/your/repo
 4. **View help** with `?`
 5. **Quit** with Ctrl+C
 
-See the **[Keyboard Shortcuts](docs/wiki/Keyboard-Shortcuts.md)** page for complete reference.
+See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 
 ## Contributing
 
-Contributions are welcome! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for quick start, or the **[Development](docs/wiki/Development.md)** wiki for comprehensive guidelines.
+Contributions are welcome! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for quick start, or the **[Development](https://github.com/Princelad/forge/wiki/Development)** wiki for comprehensive guidelines.
 
 ## License
 
@@ -80,4 +80,4 @@ GPL-3.0-only
 
 ---
 
-**Need help?** Check the **[FAQ](docs/wiki/FAQ.md)** or open an issue on GitHub.
+**Need help?** Check the **[FAQ](https://github.com/Princelad/forge/wiki/FAQ)** or open an issue on GitHub.
