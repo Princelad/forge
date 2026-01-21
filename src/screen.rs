@@ -69,6 +69,7 @@ impl Screen {
         commit_msg: &str,
         changes_pane_ratio: u16,
         commit_pane_ratio: u16,
+        dashboard_pane_ratio: u16,
         menu_selected_index: usize,
         _focus: Focus,
         selected_board_column: usize,
@@ -171,6 +172,7 @@ impl Screen {
                     search_active,
                     search_buffer,
                     total_count: total_projects,
+                    pane_ratio: dashboard_pane_ratio,
                 };
                 self.dashboard.render(frame, params);
             }

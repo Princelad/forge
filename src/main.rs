@@ -157,6 +157,7 @@ pub struct App {
     changes_pane_ratio: u16,
     commit_pane_ratio: u16,
     module_pane_ratio: u16,
+    dashboard_pane_ratio: u16,
 
     // ====================================================================
     // Project Board View State (Kanban board)
@@ -239,6 +240,7 @@ impl App {
             changes_pane_ratio: 35,
             commit_pane_ratio: 50,
             module_pane_ratio: 50,
+            dashboard_pane_ratio: 30,
             merge_scroll: 0,
             search_active: false,
             search_buffer: String::new(),
@@ -443,6 +445,7 @@ impl App {
             &commit_message,
             self.changes_pane_ratio,
             self.commit_pane_ratio,
+            self.dashboard_pane_ratio,
             self.menu_selected_index,
             self.focus,
             self.selected_board_column,
@@ -578,6 +581,7 @@ impl App {
             changes_pane_ratio: self.changes_pane_ratio,
             commit_pane_ratio: self.commit_pane_ratio,
             module_pane_ratio: self.module_pane_ratio,
+            dashboard_pane_ratio: self.dashboard_pane_ratio,
             // New view context
             selected_commit_index: self.selected_commit_index,
             selected_branch_index: self.selected_branch_index,
@@ -769,6 +773,13 @@ impl App {
             self.last_completion_message = Some(format!(
                 "Module pane: {}% (Alt+←/→)",
                 self.module_pane_ratio
+            ));
+        }
+        if let Some(ratio) = update.dashboard_pane_ratio {
+            self.dashboard_pane_ratio = ratio;
+            self.last_completion_message = Some(format!(
+                "Dashboard pane: {}% (Alt+←/→)",
+                self.dashboard_pane_ratio
             ));
         }
         if let Some(amount) = update.merge_scroll_up {

@@ -177,6 +177,7 @@ pub struct ActionContext {
     pub changes_pane_ratio: u16,
     pub commit_pane_ratio: u16,
     pub module_pane_ratio: u16,
+    pub dashboard_pane_ratio: u16,
     // New view indices
     pub selected_commit_index: usize,
     pub selected_branch_index: usize,
@@ -833,6 +834,14 @@ impl ActionProcessor {
                                 ..Default::default()
                             }
                         }
+                        AppMode::Dashboard => {
+                            let new_ratio =
+                                ((ctx.dashboard_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                dashboard_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
                         _ => ActionStateUpdate::none(),
                     };
 
@@ -877,6 +886,14 @@ impl ActionProcessor {
                                 ((ctx.module_pane_ratio as i16) + 5).clamp(20, 80) as u16;
                             ActionStateUpdate {
                                 module_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        AppMode::Dashboard => {
+                            let new_ratio =
+                                ((ctx.dashboard_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                dashboard_pane_ratio: Some(new_ratio),
                                 ..Default::default()
                             }
                         }
@@ -1520,6 +1537,7 @@ pub struct ActionStateUpdate {
     pub changes_pane_ratio: Option<u16>,
     pub commit_pane_ratio: Option<u16>,
     pub module_pane_ratio: Option<u16>,
+    pub dashboard_pane_ratio: Option<u16>,
 
     // Complex actions
     pub clamp_selections: Option<()>,

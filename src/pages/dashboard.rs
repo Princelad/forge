@@ -15,6 +15,7 @@ pub struct DashboardParams<'a> {
     pub search_active: bool,
     pub search_buffer: &'a str,
     pub total_count: usize,
+    pub pane_ratio: u16,
 }
 
 #[derive(Debug)]
@@ -32,9 +33,14 @@ impl Dashboard {
     }
 
     pub fn render(&self, frame: &mut Frame, params: DashboardParams) {
+        let left_pct = params.pane_ratio;
+        let right_pct = 100 - left_pct;
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(32), Constraint::Min(0)])
+            .constraints([
+                Constraint::Percentage(left_pct),
+                Constraint::Percentage(right_pct),
+            ])
             .split(params.area);
 
         // Left: project list with scrolling
