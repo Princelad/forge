@@ -68,6 +68,7 @@ impl Screen {
         selected_change: usize,
         commit_msg: &str,
         changes_pane_ratio: u16,
+        commit_pane_ratio: u16,
         menu_selected_index: usize,
         _focus: Focus,
         selected_board_column: usize,
@@ -93,6 +94,7 @@ impl Screen {
         selected_developer: usize,
         module_input_buffer: &str,
         module_scroll: usize,
+        module_pane_ratio: u16,
         branch_manager_mode: crate::pages::branch_manager::BranchManagerMode,
         selected_branch: usize,
         branch_input_buffer: &str,
@@ -193,6 +195,7 @@ impl Screen {
                     cached_commits,
                     selected_commit,
                     commit_scroll,
+                    commit_pane_ratio,
                 );
             }
             AppMode::BranchManager => {
@@ -244,6 +247,7 @@ impl Screen {
                         selected_developer,
                         input_buffer: module_input_buffer,
                         scroll: module_scroll,
+                        pane_ratio: module_pane_ratio,
                     };
                     self.module_manager.render(frame, params);
                 }

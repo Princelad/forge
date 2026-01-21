@@ -175,6 +175,8 @@ pub struct ActionContext {
     pub commit_message_empty: bool,
     pub has_git_client: bool,
     pub changes_pane_ratio: u16,
+    pub commit_pane_ratio: u16,
+    pub module_pane_ratio: u16,
     // New view indices
     pub selected_commit_index: usize,
     pub selected_branch_index: usize,
@@ -805,17 +807,41 @@ impl ActionProcessor {
                 }
             }
             KeyAction::PaneNarrow => {
-                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
-                    let new_ratio = ((ctx.changes_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                if ctx.focus == Focus::View {
+                    let update = match ctx.current_view {
+                        AppMode::Changes => {
+                            let new_ratio =
+                                ((ctx.changes_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                changes_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        AppMode::CommitHistory => {
+                            let new_ratio =
+                                ((ctx.commit_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                commit_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        AppMode::ModuleManager => {
+                            let new_ratio =
+                                ((ctx.module_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                module_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        _ => ActionStateUpdate::none(),
+                    };
+
                     (
                         ActionResult {
                             should_quit: false,
                             status_message: None,
                         },
-                        ActionStateUpdate {
-                            changes_pane_ratio: Some(new_ratio),
-                            ..Default::default()
-                        },
+                        update,
                     )
                 } else {
                     (
@@ -828,17 +854,41 @@ impl ActionProcessor {
                 }
             }
             KeyAction::PaneWiden => {
-                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
-                    let new_ratio = ((ctx.changes_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                if ctx.focus == Focus::View {
+                    let update = match ctx.current_view {
+                        AppMode::Changes => {
+                            let new_ratio =
+                                ((ctx.changes_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                changes_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        AppMode::CommitHistory => {
+                            let new_ratio =
+                                ((ctx.commit_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                commit_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        AppMode::ModuleManager => {
+                            let new_ratio =
+                                ((ctx.module_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                            ActionStateUpdate {
+                                module_pane_ratio: Some(new_ratio),
+                                ..Default::default()
+                            }
+                        }
+                        _ => ActionStateUpdate::none(),
+                    };
+
                     (
                         ActionResult {
                             should_quit: false,
                             status_message: None,
                         },
-                        ActionStateUpdate {
-                            changes_pane_ratio: Some(new_ratio),
-                            ..Default::default()
-                        },
+                        update,
                     )
                 } else {
                     (
@@ -1468,6 +1518,8 @@ pub struct ActionStateUpdate {
 
     // Layout adjustments
     pub changes_pane_ratio: Option<u16>,
+    pub commit_pane_ratio: Option<u16>,
+    pub module_pane_ratio: Option<u16>,
 
     // Complex actions
     pub clamp_selections: Option<()>,

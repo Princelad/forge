@@ -155,6 +155,8 @@ pub struct App {
     commit_message: String,
     changes_scroll: usize,
     changes_pane_ratio: u16,
+    commit_pane_ratio: u16,
+    module_pane_ratio: u16,
 
     // ====================================================================
     // Project Board View State (Kanban board)
@@ -235,6 +237,8 @@ impl App {
             project_scroll: 0,
             changes_scroll: 0,
             changes_pane_ratio: 35,
+            commit_pane_ratio: 50,
+            module_pane_ratio: 50,
             merge_scroll: 0,
             search_active: false,
             search_buffer: String::new(),
@@ -438,6 +442,7 @@ impl App {
             self.selected_change_index,
             &commit_message,
             self.changes_pane_ratio,
+            self.commit_pane_ratio,
             self.menu_selected_index,
             self.focus,
             self.selected_board_column,
@@ -463,6 +468,7 @@ impl App {
             self.selected_developer_index,
             &module_input_buffer,
             self.module_scroll,
+            self.module_pane_ratio,
             self.branch_manager_mode,
             self.selected_branch_index,
             &branch_input_buffer,
@@ -570,6 +576,8 @@ impl App {
             commit_message_empty: self.commit_message.trim().is_empty(),
             has_git_client: self.git_client.is_some(),
             changes_pane_ratio: self.changes_pane_ratio,
+            commit_pane_ratio: self.commit_pane_ratio,
+            module_pane_ratio: self.module_pane_ratio,
             // New view context
             selected_commit_index: self.selected_commit_index,
             selected_branch_index: self.selected_branch_index,
@@ -745,8 +753,22 @@ impl App {
         if let Some(ratio) = update.changes_pane_ratio {
             self.changes_pane_ratio = ratio;
             self.last_completion_message = Some(format!(
-                "Pane width: {}% (Alt+←/→)",
+                "Changes pane: {}% (Alt+←/→)",
                 self.changes_pane_ratio
+            ));
+        }
+        if let Some(ratio) = update.commit_pane_ratio {
+            self.commit_pane_ratio = ratio;
+            self.last_completion_message = Some(format!(
+                "Commit pane: {}% (Alt+←/→)",
+                self.commit_pane_ratio
+            ));
+        }
+        if let Some(ratio) = update.module_pane_ratio {
+            self.module_pane_ratio = ratio;
+            self.last_completion_message = Some(format!(
+                "Module pane: {}% (Alt+←/→)",
+                self.module_pane_ratio
             ));
         }
         if let Some(amount) = update.merge_scroll_up {

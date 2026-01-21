@@ -26,6 +26,7 @@ pub struct ModuleManagerParams<'a> {
     pub selected_developer: usize,
     pub input_buffer: &'a str,
     pub scroll: usize,
+    pub pane_ratio: u16,
 }
 
 /// Parameters for ModuleList rendering
@@ -54,9 +55,11 @@ impl ModuleManager {
     }
 
     pub fn render(&self, frame: &mut Frame, params: ModuleManagerParams) {
+        let left = params.pane_ratio.clamp(20, 80);
+        let right = 100u16.saturating_sub(left);
         let layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(left), Constraint::Percentage(right)])
             .split(params.area);
 
         // Left: Module list

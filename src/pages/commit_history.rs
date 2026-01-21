@@ -36,10 +36,13 @@ impl CommitHistory {
         commits: &[CommitInfo],
         selected: usize,
         scroll: usize,
+        pane_ratio: u16,
     ) {
+        let left = pane_ratio.clamp(20, 80);
+        let right = 100u16.saturating_sub(left);
         let layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(left), Constraint::Percentage(right)])
             .split(area);
 
         // Left: commit list
