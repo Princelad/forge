@@ -123,6 +123,8 @@ pub struct App {
     screen: Screen,
     key_handler: KeyHandler,
     status_message: String,
+    progress_message: Option<String>,
+    last_completion_message: Option<String>,
     store: data::Store,
     settings: AppSettings,
     git_client: Option<git::GitClient>,
@@ -217,6 +219,8 @@ impl App {
             focus: Focus::View,
             menu_selected_index: 0,
             status_message: String::from("Ready | Press ? for help"),
+            progress_message: None,
+            last_completion_message: None,
             store: data::Store::new(),
             selected_project_index: 0,
             selected_change_index: 0,
@@ -329,12 +333,18 @@ impl App {
             self.remove_pending_git_op(&result.op);
             match result.result {
                 Ok(status) => {
-                    self.status_message = format!("✓ {}", status);
+                    let msg = format!("✓ {}", status);
+                    self.last_completion_message = Some(msg.clone());
+                    self.progress_message = None;
+                    self.status_message = msg;
                     // Refresh view cache to show updated data
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ {}", e);
+                    let msg = format!("✗ {}", e);
+                    self.last_completion_message = Some(msg.clone());
+                    self.progress_message = None;
+                    self.status_message = msg;
                 }
             }
         }
@@ -358,7 +368,8 @@ impl App {
 
         if let Some(workdir) = self.git_workdir.clone() {
             let label = Self::describe_git_operation(&op);
-            self.status_message = format!("⟳ {}...", label);
+            self.progress_message = Some(format!("⟳ {}...", label));
+            self.last_completion_message = None;
             self.pending_git_ops.push(op.clone());
             self.task_manager.spawn_operation(workdir, op);
         }
@@ -372,22 +383,58 @@ impl App {
         }
     }
 
+    fn status_bar_text(&self, pending_git_ops_count: usize) -> String {
+        if pending_git_ops_count > 0 {
+            if let Some(msg) = &self.progress_message {
+                return msg.clone();
+            }
+        }
+
+        if let Some(msg) = &self.last_completion_message {
+            return msg.clone();
+        }
+
+        self.status_message.clone()
+    }
+
     fn render(&mut self, frame: &mut Frame) {
-        let filtered_projects = self.get_filtered_projects();
         let settings_options = self.settings_options();
         let accepted_merge = self
             .merge_resolutions
             .get(&(self.selected_project_index, self.selected_merge_file_index))
             .copied();
         let workdir = self.git_workdir.as_deref();
-        self.screen.render(
+        let pending_git_ops_count = self.pending_git_ops.len();
+
+        // Capture frequently used fields to avoid borrow conflicts while mutating screen
+        let status_message = self.status_bar_text(pending_git_ops_count);
+        let commit_message = self.commit_message.clone();
+        let search_buffer = self.search_buffer.clone();
+        let module_input_buffer = self.module_input_buffer.clone();
+        let branch_input_buffer = self.branch_input_buffer.clone();
+
+        let store = &self.store;
+        let filtered_projects: Vec<&crate::data::Project> = if search_buffer.is_empty() {
+            store.projects.iter().collect()
+        } else {
+            let query = search_buffer.to_lowercase();
+            store
+                .projects
+                .iter()
+                .filter(|p| p.name.to_lowercase().contains(&query))
+                .collect()
+        };
+
+        let screen = &mut self.screen;
+
+        screen.render(
             frame,
             self.current_view,
-            &self.status_message,
-            &self.store,
+            &status_message,
+            store,
             self.selected_project_index,
             self.selected_change_index,
-            &self.commit_message,
+            &commit_message,
             self.menu_selected_index,
             self.focus,
             self.selected_board_column,
@@ -400,7 +447,7 @@ impl App {
             self.changes_scroll,
             self.merge_scroll,
             self.search_active,
-            &self.search_buffer,
+            &search_buffer,
             &filtered_projects,
             &settings_options,
             self.store.projects.len(),
@@ -411,16 +458,17 @@ impl App {
             self.module_manager_mode,
             self.selected_module_index,
             self.selected_developer_index,
-            &self.module_input_buffer,
+            &module_input_buffer,
             self.module_scroll,
             self.branch_manager_mode,
             self.selected_branch_index,
-            &self.branch_input_buffer,
+            &branch_input_buffer,
             self.branch_scroll,
             &self.cached_branches,
             self.selected_commit_index,
             self.commit_scroll,
             &self.cached_commits,
+            pending_git_ops_count,
         );
     }
 
@@ -911,18 +959,6 @@ impl App {
 
     fn quit(&mut self) {
         self.running = false;
-    }
-
-    fn get_filtered_projects(&self) -> Vec<&crate::data::Project> {
-        if self.search_buffer.is_empty() {
-            return self.store.projects.iter().collect();
-        }
-        let query = self.search_buffer.to_lowercase();
-        self.store
-            .projects
-            .iter()
-            .filter(|p| p.name.to_lowercase().contains(&query))
-            .collect()
     }
 
     fn clamp_selections_for_project(&mut self) {

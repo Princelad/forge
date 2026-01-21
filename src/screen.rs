@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Clear},
     Frame,
 };
+use throbber_widgets_tui::{Throbber, ThrobberState};
 
 use crate::key_handler::KeyAction;
 use crate::pages::branch_manager::BranchManager;
@@ -31,6 +32,7 @@ pub struct Screen {
     module_manager: ModuleManager,
     settings: SettingsPage,
     help: HelpPage,
+    spinner_state: ThrobberState,
 }
 
 impl Default for Screen {
@@ -52,11 +54,12 @@ impl Screen {
             module_manager: ModuleManager::new(),
             settings: SettingsPage::new(),
             help: HelpPage::new(),
+            spinner_state: ThrobberState::default(),
         }
     }
 
     pub fn render(
-        &self,
+        &mut self,
         frame: &mut Frame,
         mode: AppMode,
         status: &str,
@@ -97,7 +100,13 @@ impl Screen {
         selected_commit: usize,
         commit_scroll: usize,
         cached_commits: &[crate::pages::commit_history::CommitInfo],
+        pending_git_ops_count: usize,
     ) {
+        // Tick spinner if there are pending operations
+        if pending_git_ops_count > 0 {
+            self.spinner_state.calc_next();
+        }
+
         let area = frame.area();
         let title = Line::from("Forge - Git Aware Project Management")
             .bold()
@@ -251,15 +260,45 @@ impl Screen {
             .map(|p| format!("Repo: {}", p.display()))
             .unwrap_or_else(|| "Repo: n/a".to_string());
 
-        let status_line = Line::from(format!(
+        let status_text = format!(
             "{}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
             status, repo_badge
-        ));
-        let status_line = match settings.theme {
-            Theme::HighContrast => status_line.on_yellow().black(),
-            Theme::Default => status_line.on_dark_gray().white(),
-        };
-        frame.render_widget(status_line, vlayout[1]);
+        );
+
+        if pending_git_ops_count > 0 {
+            let status_layout = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(16), Constraint::Min(0)])
+                .split(vlayout[1]);
+
+            let spinner_style = match settings.theme {
+                Theme::HighContrast => ratatui::style::Style::default()
+                    .fg(ratatui::style::Color::Black)
+                    .bg(ratatui::style::Color::Yellow),
+                Theme::Default => ratatui::style::Style::default()
+                    .fg(ratatui::style::Color::Cyan)
+                    .bg(ratatui::style::Color::DarkGray),
+            };
+
+            let spinner_widget = Throbber::default()
+                .label(format!(" {} ops", pending_git_ops_count))
+                .style(spinner_style);
+            frame.render_stateful_widget(spinner_widget, status_layout[0], &mut self.spinner_state);
+
+            let status_line = Line::from(status_text);
+            let status_line = match settings.theme {
+                Theme::HighContrast => status_line.on_yellow().black(),
+                Theme::Default => status_line.on_dark_gray().white(),
+            };
+            frame.render_widget(status_line, status_layout[1]);
+        } else {
+            let status_line = Line::from(status_text);
+            let status_line = match settings.theme {
+                Theme::HighContrast => status_line.on_yellow().black(),
+                Theme::Default => status_line.on_dark_gray().white(),
+            };
+            frame.render_widget(status_line, vlayout[1]);
+        }
 
         // Render help overlay if needed
         if show_help {
