@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `project_board.rs`: uses `create_list_state()` (3×), `focused_block()` (3×)
 - Eliminated 21 instances of duplicate UI patterns across 6 page modules
 - Reduced code by ~80 lines through deduplication
+- Standardized render interfaces with params structs:
+  - Added `ChangesParams` to `changes.rs`
+  - Added `CommitHistoryParams` to `commit_history.rs`
+  - Added `ProjectBoardParams` to `project_board.rs`
+  - Added `SettingsParams` to `settings.rs`
+- All page modules now consistently use params structs for rendering
+- Updated `screen.rs` to use params structs for all page render calls
 
 ### Changed
 

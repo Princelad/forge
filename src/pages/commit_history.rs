@@ -7,6 +7,16 @@ use ratatui::{
     Frame,
 };
 
+/// Parameters for CommitHistory page rendering
+#[derive(Debug, Clone)]
+pub struct CommitHistoryParams<'a> {
+    pub area: Rect,
+    pub commits: &'a [CommitInfo],
+    pub selected: usize,
+    pub scroll: usize,
+    pub pane_ratio: u16,
+}
+
 #[derive(Debug, Clone)]
 pub struct CommitInfo {
     pub hash: String,
@@ -30,27 +40,19 @@ impl CommitHistory {
         Self
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        commits: &[CommitInfo],
-        selected: usize,
-        scroll: usize,
-        pane_ratio: u16,
-    ) {
-        let left = pane_ratio.clamp(20, 80);
+    pub fn render(&self, frame: &mut Frame, params: CommitHistoryParams) {
+        let left = params.pane_ratio.clamp(20, 80);
         let right = 100u16.saturating_sub(left);
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(left), Constraint::Percentage(right)])
-            .split(area);
+            .split(params.area);
 
         // Left: commit list
-        self.render_commit_list(frame, layout[0], commits, selected, scroll);
+        self.render_commit_list(frame, layout[0], params.commits, params.selected, params.scroll);
 
         // Right: commit details
-        if let Some(commit) = commits.get(selected) {
+        if let Some(commit) = params.commits.get(params.selected) {
             self.render_commit_details(frame, layout[1], commit);
         } else {
             frame.render_widget(Block::bordered().title("Commit Details"), layout[1]);

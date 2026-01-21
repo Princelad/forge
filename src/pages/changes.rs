@@ -6,6 +6,17 @@ use ratatui::{
     Frame,
 };
 
+/// Parameters for Changes page rendering
+#[derive(Debug, Clone)]
+pub struct ChangesParams<'a> {
+    pub area: Rect,
+    pub project: &'a Project,
+    pub selected: usize,
+    pub commit_msg: &'a str,
+    pub scroll: usize,
+    pub pane_ratio: u16,
+}
+
 #[derive(Debug)]
 pub struct ChangesPage;
 
@@ -20,22 +31,13 @@ impl ChangesPage {
         Self
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame,
-        area: Rect,
-        project: &Project,
-        selected: usize,
-        commit_msg: &str,
-        scroll: usize,
-        pane_ratio: u16,
-    ) {
+    pub fn render(&self, frame: &mut Frame, params: ChangesParams) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(3)])
-            .split(area);
+            .split(params.area);
 
-        let left = pane_ratio.clamp(20, 80);
+        let left = params.pane_ratio.clamp(20, 80);
         let right = 100u16.saturating_sub(left);
         let cols = Layout::default()
             .direction(Direction::Horizontal)
@@ -43,17 +45,18 @@ impl ChangesPage {
             .split(layout[0]);
 
         // Left: file list
-        let items: Vec<ListItem> = project
+        let items: Vec<ListItem> = params
+            .project
             .changes
             .iter()
             .map(|c| ListItem::new(Self::fmt_change(c)))
             .collect();
-        let mut state = create_list_state(selected, scroll, items.len());
+        let mut state = create_list_state(params.selected, params.scroll, items.len());
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title(format!(
                     "Branch: {} | Space: stage/unstage | f: fetch | p: push | Ctrl+l: pull",
-                    project.branch
+                    params.project.branch
                 )))
                 .highlight_style(ratatui::style::Style::new().reversed())
                 .highlight_symbol(">> ")
@@ -63,9 +66,10 @@ impl ChangesPage {
         );
 
         // Right: diff preview for selected
-        let preview = project
+        let preview = params
+            .project
             .changes
-            .get(selected)
+            .get(params.selected)
             .map(|c| c.diff_preview.clone())
             .unwrap_or_else(|| "Select a file".into());
         frame.render_widget(
@@ -75,7 +79,7 @@ impl ChangesPage {
 
         // Bottom: commit message input
         frame.render_widget(
-            Paragraph::new(format!("Commit message: {}", commit_msg))
+            Paragraph::new(format!("Commit message: {}", params.commit_msg))
                 .block(Block::bordered().title("Type and press Enter to commit")),
             layout[1],
         );

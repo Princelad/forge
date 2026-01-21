@@ -178,26 +178,26 @@ impl Screen {
             AppMode::Changes => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.changes.render(
-                        frame,
-                        content_area,
-                        p,
-                        selected_change,
+                    let params = crate::pages::changes::ChangesParams {
+                        area: content_area,
+                        project: p,
+                        selected: selected_change,
                         commit_msg,
-                        changes_scroll,
-                        changes_pane_ratio,
-                    );
+                        scroll: changes_scroll,
+                        pane_ratio: changes_pane_ratio,
+                    };
+                    self.changes.render(frame, params);
                 }
             }
             AppMode::CommitHistory => {
-                self.commit_history.render(
-                    frame,
-                    content_area,
-                    cached_commits,
-                    selected_commit,
-                    commit_scroll,
-                    commit_pane_ratio,
-                );
+                let params = crate::pages::commit_history::CommitHistoryParams {
+                    area: content_area,
+                    commits: cached_commits,
+                    selected: selected_commit,
+                    scroll: commit_scroll,
+                    pane_ratio: commit_pane_ratio,
+                };
+                self.commit_history.render(frame, params);
             }
             AppMode::BranchManager => {
                 let params = crate::pages::branch_manager::BranchManagerParams {
@@ -227,14 +227,14 @@ impl Screen {
             AppMode::ProjectBoard => {
                 let proj = store.projects.get(selected_project);
                 if let Some(p) = proj {
-                    self.board.render(
-                        frame,
-                        content_area,
-                        p,
-                        selected_board_column,
-                        selected_board_item,
-                        project_scroll,
-                    );
+                    let params = crate::pages::project_board::ProjectBoardParams {
+                        area: content_area,
+                        project: p,
+                        selected_column: selected_board_column,
+                        selected_item: selected_board_item,
+                        scroll: project_scroll,
+                    };
+                    self.board.render(frame, params);
                 }
             }
             AppMode::ModuleManager => {
@@ -253,13 +253,15 @@ impl Screen {
                     self.module_manager.render(frame, params);
                 }
             }
-            AppMode::Settings => self.settings.render(
-                frame,
-                content_area,
-                selected_setting,
-                project_scroll,
-                settings_options,
-            ),
+            AppMode::Settings => {
+                let params = crate::pages::settings::SettingsParams {
+                    area: content_area,
+                    selected: selected_setting,
+                    scroll: project_scroll,
+                    options: settings_options,
+                };
+                self.settings.render(frame, params);
+            }
         }
 
         // Render the status bar on bottom
