@@ -8,7 +8,6 @@ pub mod data;
 pub mod git;
 pub mod key_handler;
 pub mod pages;
-pub mod render_context;
 pub mod screen;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
@@ -20,8 +19,6 @@ use pages::module_manager::ModuleManagerMode;
 use screen::Screen;
 
 // UI constants
-#[allow(dead_code)]
-const PAGE_SIZE: usize = 5;
 const WINDOW_SIZE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

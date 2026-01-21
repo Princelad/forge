@@ -42,13 +42,6 @@ impl KeyHandler {
         Self
     }
 
-    // Helper to track current context for Tab key disambiguation
-    fn is_module_manager_context(&self) -> bool {
-        // This will be overridden by passing context from App
-        // For now, return false (will be handled in ActionProcessor)
-        false
-    }
-
     pub fn handle_crossterm_events(&mut self) -> color_eyre::Result<KeyAction> {
         match event::read()? {
             // it's important to check KeyEventKind::Press to avoid handling key release events
@@ -67,14 +60,7 @@ impl KeyHandler {
             (_, KeyCode::Char('?')) => KeyAction::Help,
             (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
             (KeyModifiers::CONTROL, KeyCode::Char('l') | KeyCode::Char('L')) => KeyAction::Pull,
-            (KeyModifiers::NONE, KeyCode::Tab) => {
-                // Handle Tab key for module manager list switching
-                if self.is_module_manager_context() {
-                    KeyAction::SwitchModuleList
-                } else {
-                    KeyAction::NextView
-                }
-            }
+            (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
             (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k')) => KeyAction::NavigateUp,
             (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,
             (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => KeyAction::NavigateLeft,

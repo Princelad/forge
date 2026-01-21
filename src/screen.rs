@@ -7,7 +7,6 @@ use ratatui::{
 };
 use throbber_widgets_tui::{Throbber, ThrobberState};
 
-use crate::key_handler::KeyAction;
 use crate::pages::branch_manager::BranchManager;
 use crate::pages::changes::ChangesPage;
 use crate::pages::commit_history::CommitHistory;
@@ -346,21 +345,5 @@ impl Screen {
                 Constraint::Percentage((100 - percent_x) / 2),
             ])
             .split(popup_layout[1])[1]
-    }
-
-    pub fn handle_key_action(&mut self, action: KeyAction) -> bool {
-        self.main_menu.handle_key_action(action)
-    }
-
-    pub fn get_selected_menu_item(&self) -> Option<&str> {
-        self.main_menu.get_selected_item()
-    }
-
-    pub fn get_menu_items_count(&self) -> usize {
-        self.main_menu.get_items_count()
-    }
-
-    pub fn get_selected_menu_item_by_index(&self, idx: usize) -> Option<&str> {
-        self.main_menu.get_item_by_index(idx)
     }
 }

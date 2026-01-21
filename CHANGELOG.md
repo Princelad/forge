@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Deleted `src/render_context.rs` - 280 lines of unused infrastructure never integrated
+- Removed unused `Screen` delegation methods: `handle_key_action`, `get_selected_menu_item`, `get_menu_items_count`, `get_selected_menu_item_by_index`
+- Removed `PAGE_SIZE` constant from `main.rs` - marked as dead code
+- Removed `KeyHandler::is_module_manager_context()` - always returned `false`, never used
+- Removed `MainMenu.selected_option` field - App maintains this state independently
+- Removed `pub mod render_context` declaration from `main.rs`
+
 ### Changed
 
 - **BREAKING**: Renamed `FakeStore` to `Store` across entire codebase
