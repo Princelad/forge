@@ -27,15 +27,18 @@ impl ChangesPage {
         selected: usize,
         commit_msg: &str,
         scroll: usize,
+        pane_ratio: u16,
     ) {
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(3)])
             .split(area);
 
+        let left = pane_ratio.clamp(20, 80);
+        let right = 100u16.saturating_sub(left);
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(36), Constraint::Min(0)])
+            .constraints([Constraint::Percentage(left), Constraint::Percentage(right)])
             .split(layout[0]);
 
         // Left: file list

@@ -22,6 +22,8 @@ pub enum KeyAction {
     Fetch,
     Push,
     Pull,
+    PaneNarrow,
+    PaneWiden,
     TerminalResized,
     None,
 }
@@ -77,6 +79,8 @@ impl KeyHandler {
             (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,
             (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => KeyAction::NavigateLeft,
             (KeyModifiers::NONE, KeyCode::Right | KeyCode::Char('l')) => KeyAction::NavigateRight,
+            (KeyModifiers::ALT, KeyCode::Left) => KeyAction::PaneNarrow,
+            (KeyModifiers::ALT, KeyCode::Right) => KeyAction::PaneWiden,
             (KeyModifiers::NONE, KeyCode::PageUp) => KeyAction::ScrollPageUp,
             (KeyModifiers::NONE, KeyCode::PageDown) => KeyAction::ScrollPageDown,
             (KeyModifiers::NONE, KeyCode::Enter) => KeyAction::Select,
@@ -170,6 +174,7 @@ pub struct ActionContext {
     pub selected_setting_index: usize,
     pub commit_message_empty: bool,
     pub has_git_client: bool,
+    pub changes_pane_ratio: u16,
     // New view indices
     pub selected_commit_index: usize,
     pub selected_branch_index: usize,
@@ -799,6 +804,52 @@ impl ActionProcessor {
                     )
                 }
             }
+            KeyAction::PaneNarrow => {
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    let new_ratio = ((ctx.changes_pane_ratio as i16) - 5).clamp(20, 80) as u16;
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            changes_pane_ratio: Some(new_ratio),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
+            KeyAction::PaneWiden => {
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    let new_ratio = ((ctx.changes_pane_ratio as i16) + 5).clamp(20, 80) as u16;
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            changes_pane_ratio: Some(new_ratio),
+                            ..Default::default()
+                        },
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                }
+            }
             KeyAction::Fetch => {
                 if ctx.focus == Focus::View
                     && (matches!(ctx.current_view, AppMode::Dashboard | AppMode::Changes))
@@ -1414,6 +1465,9 @@ pub struct ActionStateUpdate {
     pub changes_scroll_down: Option<usize>,
     pub merge_scroll_up: Option<usize>,
     pub merge_scroll_down: Option<usize>,
+
+    // Layout adjustments
+    pub changes_pane_ratio: Option<u16>,
 
     // Complex actions
     pub clamp_selections: Option<()>,

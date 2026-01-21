@@ -67,6 +67,7 @@ impl Screen {
         selected_project: usize,
         selected_change: usize,
         commit_msg: &str,
+        changes_pane_ratio: u16,
         menu_selected_index: usize,
         _focus: Focus,
         selected_board_column: usize,
@@ -181,6 +182,7 @@ impl Screen {
                         selected_change,
                         commit_msg,
                         changes_scroll,
+                        changes_pane_ratio,
                     );
                 }
             }

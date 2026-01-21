@@ -154,6 +154,7 @@ pub struct App {
     selected_change_index: usize,
     commit_message: String,
     changes_scroll: usize,
+    changes_pane_ratio: u16,
 
     // ====================================================================
     // Project Board View State (Kanban board)
@@ -233,6 +234,7 @@ impl App {
             show_help: false,
             project_scroll: 0,
             changes_scroll: 0,
+            changes_pane_ratio: 35,
             merge_scroll: 0,
             search_active: false,
             search_buffer: String::new(),
@@ -435,6 +437,7 @@ impl App {
             self.selected_project_index,
             self.selected_change_index,
             &commit_message,
+            self.changes_pane_ratio,
             self.menu_selected_index,
             self.focus,
             self.selected_board_column,
@@ -566,6 +569,7 @@ impl App {
             selected_setting_index: self.selected_setting_index,
             commit_message_empty: self.commit_message.trim().is_empty(),
             has_git_client: self.git_client.is_some(),
+            changes_pane_ratio: self.changes_pane_ratio,
             // New view context
             selected_commit_index: self.selected_commit_index,
             selected_branch_index: self.selected_branch_index,
@@ -737,6 +741,13 @@ impl App {
             if max > WINDOW_SIZE {
                 self.changes_scroll = (self.changes_scroll + amount).min(max - WINDOW_SIZE);
             }
+        }
+        if let Some(ratio) = update.changes_pane_ratio {
+            self.changes_pane_ratio = ratio;
+            self.last_completion_message = Some(format!(
+                "Pane width: {}% (Alt+←/→)",
+                self.changes_pane_ratio
+            ));
         }
         if let Some(amount) = update.merge_scroll_up {
             self.merge_scroll = self.merge_scroll.saturating_sub(amount);
