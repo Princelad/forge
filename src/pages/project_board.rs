@@ -42,7 +42,8 @@ impl ProjectBoard {
             .split(params.area);
 
         let mk = |status: ModuleStatus| -> Vec<ListItem> {
-            params.project
+            params
+                .project
                 .modules
                 .iter()
                 .filter(|m| m.status == status)
@@ -70,13 +71,13 @@ impl ProjectBoard {
         } else {
             create_list_state(0, params.scroll, 0)
         };
-        
+
         let mut current_state = if params.selected_column == 1 {
             create_list_state(params.selected_item, params.scroll, current_items.len())
         } else {
             create_list_state(0, params.scroll, 0)
         };
-        
+
         let mut done_state = if params.selected_column == 2 {
             create_list_state(params.selected_item, params.scroll, done_items.len())
         } else {

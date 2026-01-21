@@ -49,7 +49,13 @@ impl CommitHistory {
             .split(params.area);
 
         // Left: commit list
-        self.render_commit_list(frame, layout[0], params.commits, params.selected, params.scroll);
+        self.render_commit_list(
+            frame,
+            layout[0],
+            params.commits,
+            params.selected,
+            params.scroll,
+        );
 
         // Right: commit details
         if let Some(commit) = params.commits.get(params.selected) {
