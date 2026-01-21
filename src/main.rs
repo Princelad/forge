@@ -10,7 +10,7 @@ pub mod key_handler;
 pub mod pages;
 pub mod render_context;
 pub mod screen;
-use async_task::TaskManager;
+use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
 use pages::branch_manager::{BranchInfo, BranchManagerMode};
@@ -128,6 +128,7 @@ pub struct App {
     git_client: Option<git::GitClient>,
     git_workdir: Option<PathBuf>,
     task_manager: TaskManager,
+    pending_git_ops: Vec<GitOperation>,
 
     // ====================================================================
     // Navigation & Focus State
@@ -240,6 +241,7 @@ impl App {
             git_client: None,
             git_workdir: None,
             task_manager: TaskManager::new(),
+            pending_git_ops: Vec::new(),
             // Initialize module manager state
             module_manager_mode: ModuleManagerMode::ModuleList,
             selected_module_index: 0,
@@ -324,18 +326,49 @@ impl App {
     /// Poll for completed background Git operations
     fn poll_background_tasks(&mut self) {
         if let Some(result) = self.task_manager.try_recv() {
-            match result {
+            self.remove_pending_git_op(&result.op);
+            match result.result {
                 Ok(status) => {
                     self.status_message = format!("✓ {}", status);
                     // Refresh view cache to show updated data
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    let friendly_error =
-                        git::GitClient::explain_error(&color_eyre::eyre::eyre!("{}", e));
-                    self.status_message = format!("✗ {}", friendly_error);
+                    self.status_message = format!("✗ {}", e);
                 }
             }
+        }
+    }
+
+    fn remove_pending_git_op(&mut self, op: &GitOperation) {
+        if let Some(pos) = self
+            .pending_git_ops
+            .iter()
+            .position(|existing| existing == op)
+        {
+            self.pending_git_ops.remove(pos);
+        }
+    }
+
+    fn enqueue_git_operation(&mut self, op: GitOperation) {
+        if self.git_workdir.is_none() || self.git_client.is_none() {
+            self.status_message = "✗ No Git repository".to_string();
+            return;
+        }
+
+        if let Some(workdir) = self.git_workdir.clone() {
+            let label = Self::describe_git_operation(&op);
+            self.status_message = format!("⟳ {}...", label);
+            self.pending_git_ops.push(op.clone());
+            self.task_manager.spawn_operation(workdir, op);
+        }
+    }
+
+    fn describe_git_operation(op: &GitOperation) -> String {
+        match op {
+            GitOperation::Fetch(remote) => format!("Fetching from {}", remote),
+            GitOperation::Push(remote) => format!("Pushing to {}", remote),
+            GitOperation::Pull(remote) => format!("Pulling from {}", remote),
         }
     }
 
@@ -1321,57 +1354,15 @@ impl App {
     }
 
     fn perform_fetch(&mut self) {
-        if let Some(client) = &self.git_client {
-            match client.fetch_origin() {
-                Ok(count) => {
-                    self.status_message = format!("✓ Fetched {} objects from origin", count);
-                    // Refresh view caches to show updated remote refs
-                    self.refresh_view_cache();
-                }
-                Err(e) => {
-                    let friendly_error = git::GitClient::explain_error(&e);
-                    self.status_message = format!("✗ {}", friendly_error);
-                }
-            }
-        } else {
-            self.status_message = "✗ No Git repository".to_string();
-        }
+        self.enqueue_git_operation(GitOperation::Fetch("origin".to_string()));
     }
 
     fn perform_push(&mut self) {
-        if let Some(client) = &self.git_client {
-            match client.push_origin(None) {
-                Ok(()) => {
-                    self.status_message = "✓ Pushed to origin".to_string();
-                    // Refresh view caches
-                    self.refresh_view_cache();
-                }
-                Err(e) => {
-                    let friendly_error = git::GitClient::explain_error(&e);
-                    self.status_message = format!("✗ {}", friendly_error);
-                }
-            }
-        } else {
-            self.status_message = "✗ No Git repository".to_string();
-        }
+        self.enqueue_git_operation(GitOperation::Push("origin".to_string()));
     }
 
     fn perform_pull(&mut self) {
-        if let Some(client) = &self.git_client {
-            match client.pull_origin(None) {
-                Ok(()) => {
-                    self.status_message = "✓ Pulled from origin".to_string();
-                    // Refresh view caches to show merged changes
-                    self.refresh_view_cache();
-                }
-                Err(e) => {
-                    let friendly_error = git::GitClient::explain_error(&e);
-                    self.status_message = format!("✗ {}", friendly_error);
-                }
-            }
-        } else {
-            self.status_message = "✗ No Git repository".to_string();
-        }
+        self.enqueue_git_operation(GitOperation::Pull("origin".to_string()));
     }
 
     fn perform_module_assignment(&mut self) {
