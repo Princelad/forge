@@ -50,3 +50,8 @@ pub fn auto_scroll(selected: usize, scroll: &mut usize, window_size: usize) {
         *scroll = selected.saturating_sub(window_size - 1);
     }
 }
+
+/// Adjusts pane ratio by a delta amount, clamped to valid range
+pub fn adjust_pane_ratio(current: u16, delta: i16) -> u16 {
+    ((current as i16) + delta).clamp(20, 80) as u16
+}

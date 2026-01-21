@@ -44,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `SettingsParams` to `settings.rs`
 - All page modules now consistently use params structs for rendering
 - Updated `screen.rs` to use params structs for all page render calls
+- Created `src/status_symbols.rs` module with standardized status indicators:
+  - Constants: `SUCCESS`, `ERROR`, `PROGRESS`, `INFO`
+  - Helper functions: `success()`, `error()`, `progress()`, `info()`
+- Updated all status messages throughout `main.rs` to use status_symbols helpers
+- Added `adjust_pane_ratio()` helper to `ui_utils.rs`
+- Consolidated pane ratio adjustment logic in `key_handler.rs` using helper function
+- Reduced 60+ lines of duplicate pane adjustment code to 8 lines
 
 ### Changed
 

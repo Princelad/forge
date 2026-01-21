@@ -9,6 +9,7 @@ pub mod git;
 pub mod key_handler;
 pub mod pages;
 pub mod screen;
+pub mod status_symbols;
 pub mod ui_utils;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
@@ -18,6 +19,7 @@ use pages::commit_history::CommitInfo;
 use pages::merge_visualizer::MergePaneFocus;
 use pages::module_manager::ModuleManagerMode;
 use screen::Screen;
+use status_symbols::{error, progress, success};
 
 // UI constants
 const WINDOW_SIZE: usize = 10;
@@ -339,7 +341,7 @@ impl App {
             self.remove_pending_git_op(&result.op);
             match result.result {
                 Ok(status) => {
-                    let msg = format!("✓ {}", status);
+                    let msg = success(&status);
                     self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
                     self.status_message = msg;
@@ -347,7 +349,7 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    let msg = format!("✗ {}", e);
+                    let msg = error(&e.to_string());
                     self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
                     self.status_message = msg;
@@ -368,13 +370,13 @@ impl App {
 
     fn enqueue_git_operation(&mut self, op: GitOperation) {
         if self.git_workdir.is_none() || self.git_client.is_none() {
-            self.status_message = "✗ No Git repository".to_string();
+            self.status_message = error("No Git repository");
             return;
         }
 
         if let Some(workdir) = self.git_workdir.clone() {
             let label = Self::describe_git_operation(&op);
-            self.progress_message = Some(format!("⟳ {}...", label));
+            self.progress_message = Some(progress(&label));
             self.last_completion_message = None;
             self.pending_git_ops.push(op.clone());
             self.task_manager.spawn_operation(workdir, op);
@@ -1042,10 +1044,10 @@ impl App {
                     ModuleStatus::Completed => ModuleStatus::Completed,
                 };
                 project.modules[module_idx].status = next_status;
-                self.status_message = format!(
-                    "✓ Moved {} to {:?}",
+                self.status_message = success(&format!(
+                    "Moved {} to {:?}",
                     project.modules[module_idx].name, next_status
-                );
+                ));
             }
         }
     }
@@ -1061,8 +1063,8 @@ impl App {
                     self.merge_focus,
                 );
                 self.status_message = match self.merge_focus {
-                    MergePaneFocus::Local => "✓ Accepted local version".to_string(),
-                    MergePaneFocus::Incoming => "✓ Accepted incoming version".to_string(),
+                    MergePaneFocus::Local => success("Accepted local version"),
+                    MergePaneFocus::Incoming => success("Accepted incoming version"),
                     _ => unreachable!(),
                 };
             }
@@ -1135,14 +1137,14 @@ impl App {
                     }
                     self.store
                         .bump_progress_on_commit(self.selected_project_index);
-                    self.status_message = format!("✓ Committed: {}", msg);
+                    self.status_message = success(&format!("Committed: {}", msg));
                     self.commit_message.clear();
                     if let Some(wd) = self.git_workdir.as_ref() {
                         let _ = self.store.save_progress(wd);
                     }
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ Commit failed: {}", e);
+                    self.status_message = error(&format!("Commit failed: {}", e));
                 }
             }
         }
@@ -1212,7 +1214,7 @@ impl App {
             if let Some(client) = &self.git_client {
                 match client.checkout_branch(&name) {
                     Ok(()) => {
-                        self.status_message = format!("✓ Switched to branch: {}", name);
+                        self.status_message = success(&format!("Switched to branch: {}", name));
                         // Refresh branch list
                         self.refresh_view_cache();
                         // Update project branch info
@@ -1223,7 +1225,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        self.status_message = format!("✗ Failed to switch branch: {}", e);
+                        self.status_message = error(&format!("Failed to switch branch: {}", e));
                     }
                 }
             }
@@ -1235,14 +1237,14 @@ impl App {
         if let Some(client) = &self.git_client {
             match client.create_branch(branch_name) {
                 Ok(()) => {
-                    self.status_message = format!("✓ Created branch: {}", branch_name);
+                    self.status_message = success(&format!("Created branch: {}", branch_name));
                     self.branch_input_buffer.clear();
                     self.branch_manager_mode = BranchManagerMode::List;
                     // Refresh branch list
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = format!("✗ Failed to create branch: {}", e);
+                    self.status_message = error(&format!("Failed to create branch: {}", e));
                 }
             }
         }
@@ -1263,12 +1265,12 @@ impl App {
             if let Some(client) = &self.git_client {
                 match client.delete_branch(&name) {
                     Ok(()) => {
-                        self.status_message = format!("✓ Deleted branch: {}", name);
+                        self.status_message = success(&format!("Deleted branch: {}", name));
                         // Refresh branch list
                         self.refresh_view_cache();
                     }
                     Err(e) => {
-                        self.status_message = format!("✗ Failed to delete branch: {}", e);
+                        self.status_message = error(&format!("Failed to delete branch: {}", e));
                     }
                 }
             }
@@ -1290,14 +1292,14 @@ impl App {
             .store
             .add_module(self.selected_project_index, module_name.clone())
         {
-            self.status_message = format!("✓ Created module: {}", module_name);
+            self.status_message = success(&format!("Created module: {}", module_name));
             self.module_input_buffer.clear();
             self.module_manager_mode = ModuleManagerMode::ModuleList;
             if let Some(wd) = self.git_workdir.as_ref() {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = "✗ Failed to create module".into();
+            self.status_message = error("Failed to create module");
         }
     }
 
@@ -1308,7 +1310,7 @@ impl App {
                 .store
                 .update_module(self.selected_project_index, module_id, module_name.clone())
             {
-                self.status_message = format!("✓ Updated module: {}", module_name);
+                self.status_message = success(&format!("Updated module: {}", module_name));
                 self.module_input_buffer.clear();
                 self.module_manager_mode = ModuleManagerMode::ModuleList;
                 self.editing_module_id = None;
@@ -1316,7 +1318,7 @@ impl App {
                     let _ = self.store.save_to_json(wd);
                 }
             } else {
-                self.status_message = "✗ Failed to update module".into();
+                self.status_message = error("Failed to update module");
             }
         }
     }
@@ -1330,7 +1332,7 @@ impl App {
                     .store
                     .delete_module(self.selected_project_index, module_id)
                 {
-                    self.status_message = format!("✓ Deleted module: {}", module_name);
+                    self.status_message = success(&format!("Deleted module: {}", module_name));
                     // Adjust selection
                     let new_count = self.store.projects[self.selected_project_index]
                         .modules
@@ -1342,7 +1344,7 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = "✗ Failed to delete module".into();
+                    self.status_message = error("Failed to delete module");
                 }
             }
         }
@@ -1354,14 +1356,14 @@ impl App {
             .store
             .add_developer(self.selected_project_index, developer_name.clone())
         {
-            self.status_message = format!("✓ Created developer: {}", developer_name);
+            self.status_message = success(&format!("Created developer: {}", developer_name));
             self.module_input_buffer.clear();
             self.module_manager_mode = ModuleManagerMode::DeveloperList;
             if let Some(wd) = self.git_workdir.as_ref() {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = "✗ Failed to create developer".into();
+            self.status_message = error("Failed to create developer");
         }
     }
 
@@ -1374,7 +1376,8 @@ impl App {
                     .store
                     .delete_developer(self.selected_project_index, developer_id)
                 {
-                    self.status_message = format!("✓ Deleted developer: {}", developer_name);
+                    self.status_message =
+                        success(&format!("Deleted developer: {}", developer_name));
                     // Adjust selection
                     let new_count = self.store.projects[self.selected_project_index]
                         .developers
@@ -1386,7 +1389,7 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = "✗ Failed to delete developer".into();
+                    self.status_message = error("Failed to delete developer");
                 }
             }
         }
@@ -1411,19 +1414,19 @@ impl App {
                             if let Ok(changes) = client.list_changes() {
                                 project.changes = changes;
                                 self.status_message = if is_staged {
-                                    format!("✓ Unstaged: {}", path)
+                                    success(&format!("Unstaged: {}", path))
                                 } else {
-                                    format!("✓ Staged: {}", path)
+                                    success(&format!("Staged: {}", path))
                                 };
                             }
                         }
                         Err(e) => {
-                            self.status_message = format!(
-                                "✗ Failed to {} {}: {}",
+                            self.status_message = error(&format!(
+                                "Failed to {} {}: {}",
                                 if is_staged { "unstage" } else { "stage" },
                                 path,
                                 e
-                            );
+                            ));
                         }
                     }
                 }
@@ -1455,13 +1458,14 @@ impl App {
                         module_id,
                         Some(developer_id),
                     ) {
-                        self.status_message = format!("✓ Assigned {} to module", developer_name);
+                        self.status_message =
+                            success(&format!("Assigned {} to module", developer_name));
                         self.module_assign_mode = false;
                         if let Some(wd) = self.git_workdir.as_ref() {
                             let _ = self.store.save_to_json(wd);
                         }
                     } else {
-                        self.status_message = "✗ Failed to assign developer".into();
+                        self.status_message = error("Failed to assign developer");
                     }
                 }
             }

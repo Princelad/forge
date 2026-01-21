@@ -1,5 +1,7 @@
-use crate::{AppMode, Focus};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+
+use crate::ui_utils::adjust_pane_ratio;
+use crate::{AppMode, Focus};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyAction {
@@ -796,38 +798,25 @@ impl ActionProcessor {
             KeyAction::PaneNarrow => {
                 if ctx.focus == Focus::View {
                     let update = match ctx.current_view {
-                        AppMode::Changes => {
-                            let new_ratio =
-                                ((ctx.changes_pane_ratio as i16) - 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                changes_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::CommitHistory => {
-                            let new_ratio =
-                                ((ctx.commit_pane_ratio as i16) - 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                commit_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::ModuleManager => {
-                            let new_ratio =
-                                ((ctx.module_pane_ratio as i16) - 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                module_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::Dashboard => {
-                            let new_ratio =
-                                ((ctx.dashboard_pane_ratio as i16) - 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                dashboard_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
+                        AppMode::Changes => ActionStateUpdate {
+                            changes_pane_ratio: Some(adjust_pane_ratio(ctx.changes_pane_ratio, -5)),
+                            ..Default::default()
+                        },
+                        AppMode::CommitHistory => ActionStateUpdate {
+                            commit_pane_ratio: Some(adjust_pane_ratio(ctx.commit_pane_ratio, -5)),
+                            ..Default::default()
+                        },
+                        AppMode::ModuleManager => ActionStateUpdate {
+                            module_pane_ratio: Some(adjust_pane_ratio(ctx.module_pane_ratio, -5)),
+                            ..Default::default()
+                        },
+                        AppMode::Dashboard => ActionStateUpdate {
+                            dashboard_pane_ratio: Some(adjust_pane_ratio(
+                                ctx.dashboard_pane_ratio,
+                                -5,
+                            )),
+                            ..Default::default()
+                        },
                         _ => ActionStateUpdate::none(),
                     };
 
@@ -851,38 +840,25 @@ impl ActionProcessor {
             KeyAction::PaneWiden => {
                 if ctx.focus == Focus::View {
                     let update = match ctx.current_view {
-                        AppMode::Changes => {
-                            let new_ratio =
-                                ((ctx.changes_pane_ratio as i16) + 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                changes_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::CommitHistory => {
-                            let new_ratio =
-                                ((ctx.commit_pane_ratio as i16) + 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                commit_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::ModuleManager => {
-                            let new_ratio =
-                                ((ctx.module_pane_ratio as i16) + 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                module_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
-                        AppMode::Dashboard => {
-                            let new_ratio =
-                                ((ctx.dashboard_pane_ratio as i16) + 5).clamp(20, 80) as u16;
-                            ActionStateUpdate {
-                                dashboard_pane_ratio: Some(new_ratio),
-                                ..Default::default()
-                            }
-                        }
+                        AppMode::Changes => ActionStateUpdate {
+                            changes_pane_ratio: Some(adjust_pane_ratio(ctx.changes_pane_ratio, 5)),
+                            ..Default::default()
+                        },
+                        AppMode::CommitHistory => ActionStateUpdate {
+                            commit_pane_ratio: Some(adjust_pane_ratio(ctx.commit_pane_ratio, 5)),
+                            ..Default::default()
+                        },
+                        AppMode::ModuleManager => ActionStateUpdate {
+                            module_pane_ratio: Some(adjust_pane_ratio(ctx.module_pane_ratio, 5)),
+                            ..Default::default()
+                        },
+                        AppMode::Dashboard => ActionStateUpdate {
+                            dashboard_pane_ratio: Some(adjust_pane_ratio(
+                                ctx.dashboard_pane_ratio,
+                                5,
+                            )),
+                            ..Default::default()
+                        },
                         _ => ActionStateUpdate::none(),
                     };
 
