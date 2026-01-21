@@ -1,8 +1,9 @@
 use crate::data::{ModuleStatus, Project};
+use crate::ui_utils::{create_list_state, focused_block};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
-    widgets::{Block, List, ListItem, ListState},
+    widgets::{List, ListItem},
     Frame,
 };
 
@@ -61,36 +62,28 @@ impl ProjectBoard {
         let current_items = mk(ModuleStatus::Current);
         let done_items = mk(ModuleStatus::Completed);
 
-        let mut pending_state = ListState::default().with_offset(scroll);
-        let mut current_state = ListState::default().with_offset(scroll);
-        let mut done_state = ListState::default().with_offset(scroll);
-
-        if selected_column == 0 {
-            if !pending_items.is_empty() {
-                pending_state.select(Some(selected_item.min(pending_items.len() - 1)));
-            }
-        } else if selected_column == 1 {
-            if !current_items.is_empty() {
-                current_state.select(Some(selected_item.min(current_items.len() - 1)));
-            }
-        } else if selected_column == 2
-            && !done_items.is_empty() {
-                done_state.select(Some(selected_item.min(done_items.len() - 1)));
-            }
-
-        let block_style_focused = Style::new().yellow();
+        // Create states using utility - only select if this is the active column
+        let mut pending_state = if selected_column == 0 {
+            create_list_state(selected_item, scroll, pending_items.len())
+        } else {
+            create_list_state(0, scroll, 0)
+        };
+        
+        let mut current_state = if selected_column == 1 {
+            create_list_state(selected_item, scroll, current_items.len())
+        } else {
+            create_list_state(0, scroll, 0)
+        };
+        
+        let mut done_state = if selected_column == 2 {
+            create_list_state(selected_item, scroll, done_items.len())
+        } else {
+            create_list_state(0, scroll, 0)
+        };
 
         frame.render_stateful_widget(
             List::new(pending_items)
-                .block(
-                    Block::bordered()
-                        .title("Pending")
-                        .border_style(if selected_column == 0 {
-                            block_style_focused
-                        } else {
-                            Style::default()
-                        }),
-                )
+                .block(focused_block("Pending", selected_column == 0))
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true)
                 .highlight_style(Style::new().reversed()),
@@ -100,15 +93,7 @@ impl ProjectBoard {
 
         frame.render_stateful_widget(
             List::new(current_items)
-                .block(
-                    Block::bordered()
-                        .title("Current")
-                        .border_style(if selected_column == 1 {
-                            block_style_focused
-                        } else {
-                            Style::default()
-                        }),
-                )
+                .block(focused_block("Current", selected_column == 1))
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true)
                 .highlight_style(Style::new().reversed()),
@@ -118,15 +103,7 @@ impl ProjectBoard {
 
         frame.render_stateful_widget(
             List::new(done_items)
-                .block(
-                    Block::bordered()
-                        .title("Completed")
-                        .border_style(if selected_column == 2 {
-                            block_style_focused
-                        } else {
-                            Style::default()
-                        }),
-                )
+                .block(focused_block("Completed", selected_column == 2))
                 .highlight_symbol(">> ")
                 .repeat_highlight_symbol(true)
                 .highlight_style(Style::new().reversed()),

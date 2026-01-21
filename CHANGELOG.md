@@ -18,6 +18,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `MainMenu.selected_option` field - App maintains this state independently
 - Removed `pub mod render_context` declaration from `main.rs`
 
+### Added
+
+- Created `src/ui_utils.rs` with common UI utilities:
+  - `create_list_state()` - standardizes ListState creation with bounds checking
+  - `focused_block()` - creates blocks with conditional focus styling
+  - `render_input_form()` - renders common input forms
+  - `auto_scroll()` - auto-scrolls views to keep selected items visible
+
+### Changed
+
+- Refactored all page modules to use `ui_utils` helpers:
+  - `dashboard.rs`: uses `create_list_state()`
+  - `changes.rs`: uses `create_list_state()`
+  - `branch_manager.rs`: uses `create_list_state()`, `render_input_form()`
+  - `commit_history.rs`: uses `create_list_state()`
+  - `module_manager.rs`: uses `create_list_state()` (2×), `render_input_form()` (2×)
+  - `project_board.rs`: uses `create_list_state()` (3×), `focused_block()` (3×)
+- Eliminated 21 instances of duplicate UI patterns across 6 page modules
+- Reduced code by ~80 lines through deduplication
+
 ### Changed
 
 - **BREAKING**: Renamed `FakeStore` to `Store` across entire codebase

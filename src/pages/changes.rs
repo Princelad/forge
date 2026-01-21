@@ -1,7 +1,8 @@
 use crate::data::{Change, Project};
+use crate::ui_utils::create_list_state;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -47,9 +48,7 @@ impl ChangesPage {
             .iter()
             .map(|c| ListItem::new(Self::fmt_change(c)))
             .collect();
-        let mut state = ListState::default()
-            .with_selected(Some(selected))
-            .with_offset(scroll);
+        let mut state = create_list_state(selected, scroll, items.len());
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title(format!(

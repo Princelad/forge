@@ -1,9 +1,10 @@
 use crate::data::{Developer, Module, ModuleStatus, Project};
+use crate::ui_utils::{create_list_state, render_input_form};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem},
     Frame,
 };
 
@@ -132,9 +133,7 @@ impl ModuleManager {
             })
             .collect();
 
-        let mut state = ListState::default()
-            .with_selected(Some(params.selected.min(items.len().saturating_sub(1))))
-            .with_offset(params.scroll);
+        let mut state = create_list_state(params.selected, params.scroll, items.len());
 
         let title = if params.is_focused {
             "Modules [FOCUSED]"
@@ -175,9 +174,7 @@ impl ModuleManager {
             })
             .collect();
 
-        let mut state = ListState::default()
-            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
-            .with_offset(scroll);
+        let mut state = create_list_state(selected, scroll, items.len());
 
         let title = if is_focused {
             "Developers [FOCUSED]"
@@ -212,36 +209,10 @@ impl ModuleManager {
             _ => "Module Form",
         };
 
-        let help_text = vec![
-            Line::from(""),
-            Line::from(Span::styled("Enter module name:", Style::new().yellow())),
-            Line::from(""),
-            Line::from(Span::raw(format!("> {}", input))),
-            Line::from(""),
-            Line::from(Span::styled("Press Enter to confirm", Style::new().gray())),
-            Line::from(Span::styled("Press Esc to cancel", Style::new().gray())),
-        ];
-
-        frame.render_widget(
-            Paragraph::new(help_text).block(Block::bordered().title(title)),
-            area,
-        );
+        render_input_form(frame, area, title, "Enter module name", input);
     }
 
     fn render_developer_form(&self, frame: &mut Frame, area: Rect, input: &str) {
-        let help_text = vec![
-            Line::from(""),
-            Line::from(Span::styled("Enter developer name:", Style::new().yellow())),
-            Line::from(""),
-            Line::from(Span::raw(format!("> {}", input))),
-            Line::from(""),
-            Line::from(Span::styled("Press Enter to confirm", Style::new().gray())),
-            Line::from(Span::styled("Press Esc to cancel", Style::new().gray())),
-        ];
-
-        frame.render_widget(
-            Paragraph::new(help_text).block(Block::bordered().title("Create New Developer")),
-            area,
-        );
+        render_input_form(frame, area, "Create New Developer", "Enter developer name", input);
     }
 }

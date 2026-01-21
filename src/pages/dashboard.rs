@@ -1,7 +1,8 @@
 use crate::data::Project;
+use crate::ui_utils::create_list_state;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -49,9 +50,7 @@ impl Dashboard {
             .iter()
             .map(|p| ListItem::new(p.name.clone()))
             .collect();
-        let mut state = ListState::default()
-            .with_selected(Some(params.selected.min(items.len().saturating_sub(1))))
-            .with_offset(params.scroll);
+        let mut state = create_list_state(params.selected, params.scroll, items.len());
 
         let title = if params.search_active {
             format!(

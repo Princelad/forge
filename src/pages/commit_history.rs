@@ -1,8 +1,9 @@
+use crate::ui_utils::create_list_state;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
@@ -98,9 +99,7 @@ impl CommitHistory {
             })
             .collect();
 
-        let mut state = ListState::default()
-            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
-            .with_offset(scroll);
+        let mut state = create_list_state(selected, scroll, items.len());
 
         frame.render_stateful_widget(
             List::new(items)

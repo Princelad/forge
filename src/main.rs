@@ -9,6 +9,7 @@ pub mod git;
 pub mod key_handler;
 pub mod pages;
 pub mod screen;
+pub mod ui_utils;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};

@@ -1,8 +1,9 @@
+use crate::ui_utils::{create_list_state, render_input_form};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem},
     Frame,
 };
 
@@ -109,9 +110,7 @@ impl BranchManager {
             })
             .collect();
 
-        let mut state = ListState::default()
-            .with_selected(Some(selected.min(items.len().saturating_sub(1))))
-            .with_offset(scroll);
+        let mut state = create_list_state(selected, scroll, items.len());
 
         frame.render_stateful_widget(
             List::new(items)
@@ -124,20 +123,6 @@ impl BranchManager {
     }
 
     fn render_create_form(&self, frame: &mut Frame, area: Rect, input: &str) {
-        let help_text = vec![
-            Line::from(""),
-            Line::from(Span::styled("Branch name:", Style::new().yellow())),
-            Line::from(Span::raw(format!("> {}", input))),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Press Enter to create | Esc to cancel",
-                Style::new().gray(),
-            )),
-        ];
-
-        frame.render_widget(
-            Paragraph::new(help_text).block(Block::bordered().title("Create New Branch")),
-            area,
-        );
+        render_input_form(frame, area, "Create New Branch", "Branch name", input);
     }
 }
