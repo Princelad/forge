@@ -676,37 +676,168 @@ impl GitClient {
     /// Get a user-friendly error message from a git2 error
     ///
     /// Maps common git2 errors to actionable user guidance
+    /// Explain Git errors in user-friendly terms with actionable guidance
+    ///
+    /// Maps common git2 error codes and patterns to helpful troubleshooting steps.
+    /// Covers authentication, network, corruption, and operational errors.
     pub fn explain_error(e: &color_eyre::eyre::Report) -> String {
         let error_str = e.to_string();
+        let error_lower = error_str.to_lowercase();
 
-        if error_str.contains("index") && error_str.contains("lock") {
-            "Git index is locked. Another Git operation may be running. Try again in a moment."
-                .to_string()
-        } else if error_str.contains("index") {
-            "Git index is corrupted. Try: 'rm .git/index.lock' and retry, or 'git fsck --full'"
-                .to_string()
-        } else if error_str.contains("HEAD") {
-            "Repository HEAD is invalid. Check 'git show-ref HEAD' or make an initial commit."
-                .to_string()
-        } else if error_str.contains("detached") {
-            "Cannot perform this operation on a detached HEAD. Checkout a branch first with 'git checkout'.".to_string()
-        } else if error_str.contains("conflict") {
-            "Merge conflicts detected. Resolve conflicts and commit manually.".to_string()
-        } else if error_str.contains("authentication") || error_str.contains("credentials") {
-            "Authentication failed. Check your SSH keys or Git credentials.".to_string()
-        } else if error_str.contains("remote") && error_str.contains("not found") {
-            "Remote repository not found. Check 'git remote -v' or network connectivity."
-                .to_string()
-        } else if error_str.contains("network") {
-            "Network error. Check your internet connection and remote URL.".to_string()
-        } else if error_str.contains("object") {
-            "Repository is missing objects. Try: 'git fsck --full' or clone again.".to_string()
-        } else if error_str.contains("corrupted") || error_str.contains("invalid") {
-            "Repository data is corrupted. Try: 'git fsck --full' and 'git gc --aggressive'."
-                .to_string()
-        } else {
-            format!("Git error: {}", error_str)
+        // Authentication and credentials errors
+        if error_lower.contains("authentication failed")
+            || error_lower.contains("credentials")
+            || error_lower.contains("publickey")
+            || error_lower.contains("username")
+            || error_lower.contains("password")
+        {
+            return "Authentication failed. Check:\n\
+                    • SSH keys: ls -la ~/.ssh/ | grep id_rsa\n\
+                    • SSH agent: ssh-add -l\n\
+                    • GitHub/GitLab access: ssh -T git@github.com\n\
+                    • HTTPS credentials in ~/.gitconfig"
+                .to_string();
         }
+
+        // Network connectivity errors
+        if error_lower.contains("failed to resolve")
+            || error_lower.contains("could not resolve host")
+            || error_lower.contains("connection timed out")
+            || error_lower.contains("connection refused")
+            || error_lower.contains("network is unreachable")
+        {
+            return "Network error. Check:\n\
+                    • Internet connection: ping -c 3 github.com\n\
+                    • Firewall/proxy settings\n\
+                    • VPN connectivity\n\
+                    • Remote URL: git remote -v"
+                .to_string();
+        }
+
+        // Remote repository errors
+        if (error_lower.contains("remote") && error_lower.contains("not found"))
+            || error_lower.contains("repository not found")
+            || error_lower.contains("does not appear to be a git repository")
+        {
+            return "Remote repository not found. Check:\n\
+                    • Repository exists: git ls-remote <url>\n\
+                    • Access permissions (private repo?)\n\
+                    • Remote URL: git remote -v\n\
+                    • Typos in organization/repo name"
+                .to_string();
+        }
+
+        // Index lock errors (common with concurrent operations)
+        if error_lower.contains("index") && error_lower.contains("lock") {
+            return "Git index is locked. Another Git operation is running.\n\
+                    • Wait for other operations to complete\n\
+                    • If stuck, check: ps aux | grep git\n\
+                    • Force unlock: rm -f .git/index.lock\n\
+                    • Warning: Only force unlock if no git process is active"
+                .to_string();
+        }
+
+        // Corrupted index
+        if error_lower.contains("index") && error_lower.contains("corrupt") {
+            return "Git index is corrupted. Try:\n\
+                    1. rm .git/index\n\
+                    2. git reset\n\
+                    3. git status (to rebuild index)\n\
+                    4. If that fails: git fsck --full"
+                .to_string();
+        }
+
+        // HEAD reference errors
+        if error_lower.contains("head") && error_lower.contains("invalid") {
+            return "Repository HEAD is invalid. Try:\n\
+                    • Check: cat .git/HEAD\n\
+                    • Fix: git symbolic-ref HEAD refs/heads/main\n\
+                    • Or create initial commit if empty repo"
+                .to_string();
+        }
+
+        // Detached HEAD state
+        if error_lower.contains("detached") || error_lower.contains("detached head") {
+            return "Cannot perform this operation on a detached HEAD.\n\
+                    • View current state: git status\n\
+                    • Return to branch: git checkout main\n\
+                    • Create new branch: git checkout -b <branch-name>\n\
+                    • Discard changes: git checkout <branch>"
+                .to_string();
+        }
+
+        // Merge conflicts
+        if error_lower.contains("conflict") || error_lower.contains("merge conflict") {
+            return "Merge conflicts detected. Resolve conflicts manually:\n\
+                    1. git status (see conflicted files)\n\
+                    2. Edit files to resolve conflicts\n\
+                    3. git add <resolved-files>\n\
+                    4. git commit -m 'Resolve merge conflicts'\n\
+                    5. Or abort: git merge --abort"
+                .to_string();
+        }
+
+        // Missing objects (corruption)
+        if error_lower.contains("object") && error_lower.contains("missing") {
+            return "Repository is missing objects (corruption detected).\n\
+                    Repair steps:\n\
+                    1. git fsck --full\n\
+                    2. git gc --aggressive --prune=now\n\
+                    3. If many errors, consider re-cloning\n\
+                    4. Check disk space: df -h"
+                .to_string();
+        }
+
+        // General corruption
+        if error_lower.contains("corrupt") || error_lower.contains("invalid") {
+            return "Repository data is corrupted. Try:\n\
+                    1. git fsck --full (diagnose)\n\
+                    2. git gc --aggressive (repair)\n\
+                    3. Backup: cp -r .git .git.backup\n\
+                    4. Last resort: re-clone repository"
+                .to_string();
+        }
+
+        // Permission errors
+        if error_lower.contains("permission denied")
+            || error_lower.contains("insufficient permission")
+        {
+            return "Permission denied. Check:\n\
+                    • File permissions: ls -la .git/\n\
+                    • Ownership: stat .git/\n\
+                    • Fix ownership: sudo chown -R $USER:$USER .git/\n\
+                    • Repository access rights on remote"
+                .to_string();
+        }
+
+        // Untracked files would be overwritten
+        if error_lower.contains("would be overwritten") || error_lower.contains("untracked") {
+            return "Operation would overwrite untracked files.\n\
+                    • Stash changes: git stash --include-untracked\n\
+                    • Remove untracked: git clean -fd (warning: deletes files!)\n\
+                    • Or move files to different location"
+                .to_string();
+        }
+
+        // Reference errors
+        if error_lower.contains("reference") || error_lower.contains("ref") {
+            return "Git reference error. Try:\n\
+                    • List refs: git show-ref\n\
+                    • Verify: git fsck --full\n\
+                    • Repair: git gc --prune=now\n\
+                    • Check .git/refs/ directory integrity"
+                .to_string();
+        }
+
+        // Default: provide raw error with context
+        format!(
+            "Git operation failed: {}\n\n\
+            Common troubleshooting:\n\
+            • Check git status\n\
+            • Verify remote connectivity: git ls-remote\n\
+            • Run diagnostics: git fsck --full",
+            error_str
+        )
     }
 }
 
@@ -844,6 +975,109 @@ mod tests {
             vec!["file1.rs".to_string(), "file2.rs".to_string()],
         );
         // If compilation succeeds, the type alias is correct
+    }
+
+    #[test]
+    fn test_explain_error_authentication() {
+        let err = color_eyre::eyre::eyre!("authentication failed for remote");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("Authentication failed"),
+            "Should explain authentication errors"
+        );
+        assert!(explanation.contains("SSH keys"), "Should mention SSH keys");
+    }
+
+    #[test]
+    fn test_explain_error_network() {
+        let err = color_eyre::eyre::eyre!("failed to resolve host github.com");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("Network error"),
+            "Should explain network errors"
+        );
+        assert!(
+            explanation.contains("ping"),
+            "Should suggest connectivity check"
+        );
+    }
+
+    #[test]
+    fn test_explain_error_index_lock() {
+        let err = color_eyre::eyre::eyre!("index.lock file exists");
+        let explanation = GitClient::explain_error(&err);
+        assert!(explanation.contains("locked"), "Should explain lock errors");
+        assert!(
+            explanation.contains("index.lock"),
+            "Should mention lock file"
+        );
+    }
+
+    #[test]
+    fn test_explain_error_merge_conflict() {
+        let err = color_eyre::eyre::eyre!("Merge conflict detected in file.txt");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("conflict"),
+            "Should explain merge conflicts"
+        );
+        assert!(
+            explanation.contains("git status"),
+            "Should suggest git status"
+        );
+    }
+
+    #[test]
+    fn test_explain_error_corrupted_object() {
+        let err = color_eyre::eyre::eyre!("object 1234abc is missing from repository");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("missing objects"),
+            "Should explain missing objects"
+        );
+        assert!(explanation.contains("git fsck"), "Should suggest fsck");
+    }
+
+    #[test]
+    fn test_explain_error_permission_denied() {
+        let err = color_eyre::eyre::eyre!("permission denied accessing .git/config");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("Permission denied"),
+            "Should explain permission errors"
+        );
+        assert!(
+            explanation.contains("permissions"),
+            "Should mention checking permissions"
+        );
+    }
+
+    #[test]
+    fn test_explain_error_detached_head() {
+        let err = color_eyre::eyre::eyre!("You are in 'detached HEAD' state");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("detached HEAD"),
+            "Should explain detached HEAD"
+        );
+        assert!(
+            explanation.contains("git checkout"),
+            "Should suggest checkout"
+        );
+    }
+
+    #[test]
+    fn test_explain_error_generic() {
+        let err = color_eyre::eyre::eyre!("Some unknown git error occurred");
+        let explanation = GitClient::explain_error(&err);
+        assert!(
+            explanation.contains("Git operation failed"),
+            "Should provide generic message"
+        );
+        assert!(
+            explanation.contains("troubleshooting"),
+            "Should provide troubleshooting steps"
+        );
     }
 }
 
