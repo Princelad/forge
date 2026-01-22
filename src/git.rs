@@ -791,7 +791,7 @@ mod tests {
         assert!(changes.is_ok(), "list_changes should succeed");
         let changes_vec = changes.unwrap();
         assert!(
-            changes_vec.len() > 0,
+            !changes_vec.is_empty(),
             "untracked file should appear in changes"
         );
         assert_eq!(
@@ -885,7 +885,7 @@ mod integration_tests {
 
         // List changes - should show new file
         let changes = client.list_changes().expect("Failed to list changes");
-        assert!(changes.len() > 0, "Should detect new file");
+        assert!(!changes.is_empty(), "Should detect new file");
 
         // Stage the file
         let stage_result = client.stage_file("file2.txt");
