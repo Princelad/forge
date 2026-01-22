@@ -98,23 +98,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Verified Capabilities
 
 ✅ **Git Integration**: All libgit2 operations properly wrapped with error recovery
+
 - Fetch/Push/Pull with credential handling
 - Branch operations (create/delete/switch)
 - Merge conflict detection and visualization
 - Commit history retrieval
 
 ✅ **Data Persistence**: JSON storage in `.forge/` with proper load/save
+
 - Module and developer CRUD operations
 - Auto-population from Git history
 - Progress tracking in `.git/forge/progress.txt`
 
 ✅ **TUI Event Loop**: Responsive event handling with proper state updates
+
 - Keyboard shortcuts (vi-style hjkl + arrow keys)
 - Tab navigation between views
 - Search functionality in dashboard
 - Pane ratio adjustment (Alt+←/→)
 
 ✅ **Input Handling**: Context-aware keybinding dispatch
+
 - Documented design decision: conditional shortcut activation based on commit message state
 - Handles conflict between 'f'/'p' shortcuts and typing in commit input
 - Clean separation of concerns between menu/view/focus contexts
@@ -122,16 +126,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Recommendations
 
 **Immediate** (before next release):
+
 1. Apply clippy fixes for `.len() > 0` → `.is_empty()`
 2. Review and document any edge cases in merge conflict handling
 3. Verify SSH credential handling works correctly for push/pull operations
 
 **Short-term** (Phase 7):
+
 1. Refactor `screen.rs::render()` with `RenderContext` struct
 2. Add more integration tests for multi-step workflows (branch create + switch + commit)
 3. Consider logging failed benchmark errors instead of silent `.ok()`
 
 **Long-term** (Phase 8+):
+
 1. Refactor App struct into nested state modules (medium-high priority)
 2. Extract view-specific action handlers to page modules
 3. Consider adding persistence for branch/merge states between sessions

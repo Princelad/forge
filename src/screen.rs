@@ -19,6 +19,57 @@ use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 use crate::{AppMode, AppSettings, Focus, Theme};
 
+/// Context for rendering the UI
+///
+/// Bundles all parameters needed for rendering to reduce function signature complexity
+/// and improve maintainability when adding new views or features.
+#[derive(Debug)]
+pub struct RenderContext<'a> {
+    pub mode: AppMode,
+    pub status: &'a str,
+    pub store: &'a crate::data::Store,
+    pub selected_project: usize,
+    pub selected_change: usize,
+    pub commit_msg: &'a str,
+    pub changes_pane_ratio: u16,
+    pub commit_pane_ratio: u16,
+    pub dashboard_pane_ratio: u16,
+    pub menu_selected_index: usize,
+    pub focus: Focus,
+    pub selected_board_column: usize,
+    pub selected_board_item: usize,
+    pub merge_file_index: usize,
+    pub merge_focus: crate::pages::merge_visualizer::MergePaneFocus,
+    pub selected_setting: usize,
+    pub show_help: bool,
+    pub project_scroll: usize,
+    pub changes_scroll: usize,
+    pub merge_scroll: usize,
+    pub search_active: bool,
+    pub search_buffer: &'a str,
+    pub filtered_projects: &'a [&'a crate::data::Project],
+    pub settings_options: &'a [String],
+    pub total_projects: usize,
+    pub settings: &'a AppSettings,
+    pub accepted_merge: Option<crate::pages::merge_visualizer::MergePaneFocus>,
+    pub workdir: Option<&'a std::path::Path>,
+    pub module_manager_mode: crate::pages::module_manager::ModuleManagerMode,
+    pub selected_module: usize,
+    pub selected_developer: usize,
+    pub module_input_buffer: &'a str,
+    pub module_scroll: usize,
+    pub module_pane_ratio: u16,
+    pub branch_manager_mode: crate::pages::branch_manager::BranchManagerMode,
+    pub selected_branch: usize,
+    pub branch_input_buffer: &'a str,
+    pub branch_scroll: usize,
+    pub cached_branches: &'a [crate::pages::branch_manager::BranchInfo],
+    pub selected_commit: usize,
+    pub commit_scroll: usize,
+    pub cached_commits: &'a [crate::pages::commit_history::CommitInfo],
+    pub pending_git_ops_count: usize,
+}
+
 #[derive(Debug)]
 pub struct Screen {
     main_menu: MainMenu,
@@ -57,56 +108,9 @@ impl Screen {
         }
     }
 
-    pub fn render(
-        &mut self,
-        frame: &mut Frame,
-        mode: AppMode,
-        status: &str,
-        store: &crate::data::Store,
-        selected_project: usize,
-        selected_change: usize,
-        commit_msg: &str,
-        changes_pane_ratio: u16,
-        commit_pane_ratio: u16,
-        dashboard_pane_ratio: u16,
-        menu_selected_index: usize,
-        _focus: Focus,
-        selected_board_column: usize,
-        selected_board_item: usize,
-        merge_file_index: usize,
-        merge_focus: crate::pages::merge_visualizer::MergePaneFocus,
-        selected_setting: usize,
-        show_help: bool,
-        project_scroll: usize,
-        changes_scroll: usize,
-        merge_scroll: usize,
-        search_active: bool,
-        search_buffer: &str,
-        filtered_projects: &[&crate::data::Project],
-        settings_options: &[String],
-        total_projects: usize,
-        settings: &AppSettings,
-        accepted_merge: Option<crate::pages::merge_visualizer::MergePaneFocus>,
-        workdir: Option<&std::path::Path>,
-        // New page parameters
-        module_manager_mode: crate::pages::module_manager::ModuleManagerMode,
-        selected_module: usize,
-        selected_developer: usize,
-        module_input_buffer: &str,
-        module_scroll: usize,
-        module_pane_ratio: u16,
-        branch_manager_mode: crate::pages::branch_manager::BranchManagerMode,
-        selected_branch: usize,
-        branch_input_buffer: &str,
-        branch_scroll: usize,
-        cached_branches: &[crate::pages::branch_manager::BranchInfo],
-        selected_commit: usize,
-        commit_scroll: usize,
-        cached_commits: &[crate::pages::commit_history::CommitInfo],
-        pending_git_ops_count: usize,
-    ) {
+    pub fn render(&mut self, frame: &mut Frame, ctx: &RenderContext) {
         // Tick spinner if there are pending operations
-        if pending_git_ops_count > 0 {
+        if ctx.pending_git_ops_count > 0 {
             self.spinner_state.calc_next();
         }
 
@@ -128,14 +132,14 @@ impl Screen {
 
         // Create menu bar for the content block header
         let mut menu_line = Vec::new();
-        let focus_style = if matches!(_focus, Focus::Menu) {
+        let focus_style = if matches!(ctx.focus, Focus::Menu) {
             ratatui::style::Style::new().yellow().bold()
         } else {
             ratatui::style::Style::new()
         };
 
         for (idx, item) in self.main_menu.menu_items.iter().enumerate() {
-            if idx == menu_selected_index {
+            if idx == ctx.menu_selected_index {
                 menu_line.push(Span::styled(
                     format!(" {} ", item),
                     ratatui::style::Style::new().reversed().patch(focus_style),
@@ -143,7 +147,7 @@ impl Screen {
             } else {
                 menu_line.push(Span::styled(
                     format!(" {} ", item),
-                    if matches!(_focus, Focus::Menu) {
+                    if matches!(ctx.focus, Focus::Menu) {
                         ratatui::style::Style::new().bold()
                     } else {
                         ratatui::style::Style::new()
@@ -161,30 +165,30 @@ impl Screen {
         frame.render_widget(content_block, vlayout[0]);
 
         // Render the content page based on mode
-        match mode {
+        match ctx.mode {
             AppMode::Dashboard => {
                 let params = crate::pages::dashboard::DashboardParams {
                     area: content_area,
-                    projects: filtered_projects,
-                    selected: selected_project,
-                    scroll: project_scroll,
-                    search_active,
-                    search_buffer,
-                    total_count: total_projects,
-                    pane_ratio: dashboard_pane_ratio,
+                    projects: ctx.filtered_projects,
+                    selected: ctx.selected_project,
+                    scroll: ctx.project_scroll,
+                    search_active: ctx.search_active,
+                    search_buffer: ctx.search_buffer,
+                    total_count: ctx.total_projects,
+                    pane_ratio: ctx.dashboard_pane_ratio,
                 };
                 self.dashboard.render(frame, params);
             }
             AppMode::Changes => {
-                let proj = store.projects.get(selected_project);
+                let proj = ctx.store.projects.get(ctx.selected_project);
                 if let Some(p) = proj {
                     let params = crate::pages::changes::ChangesParams {
                         area: content_area,
                         project: p,
-                        selected: selected_change,
-                        commit_msg,
-                        scroll: changes_scroll,
-                        pane_ratio: changes_pane_ratio,
+                        selected: ctx.selected_change,
+                        commit_msg: ctx.commit_msg,
+                        scroll: ctx.changes_scroll,
+                        pane_ratio: ctx.changes_pane_ratio,
                     };
                     self.changes.render(frame, params);
                 }
@@ -192,63 +196,63 @@ impl Screen {
             AppMode::CommitHistory => {
                 let params = crate::pages::commit_history::CommitHistoryParams {
                     area: content_area,
-                    commits: cached_commits,
-                    selected: selected_commit,
-                    scroll: commit_scroll,
-                    pane_ratio: commit_pane_ratio,
+                    commits: ctx.cached_commits,
+                    selected: ctx.selected_commit,
+                    scroll: ctx.commit_scroll,
+                    pane_ratio: ctx.commit_pane_ratio,
                 };
                 self.commit_history.render(frame, params);
             }
             AppMode::BranchManager => {
                 let params = crate::pages::branch_manager::BranchManagerParams {
                     area: content_area,
-                    branches: cached_branches,
-                    selected: selected_branch,
-                    scroll: branch_scroll,
-                    mode: branch_manager_mode,
-                    input_buffer: branch_input_buffer,
+                    branches: ctx.cached_branches,
+                    selected: ctx.selected_branch,
+                    scroll: ctx.branch_scroll,
+                    mode: ctx.branch_manager_mode,
+                    input_buffer: ctx.branch_input_buffer,
                 };
                 self.branch_manager.render(frame, params);
             }
             AppMode::MergeVisualizer => {
-                let proj = store.projects.get(selected_project);
+                let proj = ctx.store.projects.get(ctx.selected_project);
                 if let Some(p) = proj {
                     let params = crate::pages::merge_visualizer::MergeVisualizerParams {
                         area: content_area,
                         project: p,
-                        selected_file: merge_file_index,
-                        pane_focus: merge_focus,
-                        scroll: merge_scroll,
-                        accepted: accepted_merge,
+                        selected_file: ctx.merge_file_index,
+                        pane_focus: ctx.merge_focus,
+                        scroll: ctx.merge_scroll,
+                        accepted: ctx.accepted_merge,
                     };
                     self.merge.render(frame, params);
                 }
             }
             AppMode::ProjectBoard => {
-                let proj = store.projects.get(selected_project);
+                let proj = ctx.store.projects.get(ctx.selected_project);
                 if let Some(p) = proj {
                     let params = crate::pages::project_board::ProjectBoardParams {
                         area: content_area,
                         project: p,
-                        selected_column: selected_board_column,
-                        selected_item: selected_board_item,
-                        scroll: project_scroll,
+                        selected_column: ctx.selected_board_column,
+                        selected_item: ctx.selected_board_item,
+                        scroll: ctx.project_scroll,
                     };
                     self.board.render(frame, params);
                 }
             }
             AppMode::ModuleManager => {
-                let proj = store.projects.get(selected_project);
+                let proj = ctx.store.projects.get(ctx.selected_project);
                 if let Some(p) = proj {
                     let params = crate::pages::module_manager::ModuleManagerParams {
                         area: content_area,
                         project: p,
-                        mode: module_manager_mode,
-                        selected_module,
-                        selected_developer,
-                        input_buffer: module_input_buffer,
-                        scroll: module_scroll,
-                        pane_ratio: module_pane_ratio,
+                        mode: ctx.module_manager_mode,
+                        selected_module: ctx.selected_module,
+                        selected_developer: ctx.selected_developer,
+                        input_buffer: ctx.module_input_buffer,
+                        scroll: ctx.module_scroll,
+                        pane_ratio: ctx.module_pane_ratio,
                     };
                     self.module_manager.render(frame, params);
                 }
@@ -256,31 +260,32 @@ impl Screen {
             AppMode::Settings => {
                 let params = crate::pages::settings::SettingsParams {
                     area: content_area,
-                    selected: selected_setting,
-                    scroll: project_scroll,
-                    options: settings_options,
+                    selected: ctx.selected_setting,
+                    scroll: ctx.project_scroll,
+                    options: ctx.settings_options,
                 };
                 self.settings.render(frame, params);
             }
         }
 
         // Render the status bar on bottom
-        let repo_badge = workdir
+        let repo_badge = ctx
+            .workdir
             .map(|p| format!("Repo: {}", p.display()))
             .unwrap_or_else(|| "Repo: n/a".to_string());
 
         let status_text = format!(
             "{}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
-            status, repo_badge
+            ctx.status, repo_badge
         );
 
-        if pending_git_ops_count > 0 {
+        if ctx.pending_git_ops_count > 0 {
             let status_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(16), Constraint::Min(0)])
                 .split(vlayout[1]);
 
-            let spinner_style = match settings.theme {
+            let spinner_style = match ctx.settings.theme {
                 Theme::HighContrast => ratatui::style::Style::default()
                     .fg(ratatui::style::Color::Black)
                     .bg(ratatui::style::Color::Yellow),
@@ -290,19 +295,19 @@ impl Screen {
             };
 
             let spinner_widget = Throbber::default()
-                .label(format!(" {} ops", pending_git_ops_count))
+                .label(format!(" {} ops", ctx.pending_git_ops_count))
                 .style(spinner_style);
             frame.render_stateful_widget(spinner_widget, status_layout[0], &mut self.spinner_state);
 
             let status_line = Line::from(status_text);
-            let status_line = match settings.theme {
+            let status_line = match ctx.settings.theme {
                 Theme::HighContrast => status_line.on_yellow().black(),
                 Theme::Default => status_line.on_dark_gray().white(),
             };
             frame.render_widget(status_line, status_layout[1]);
         } else {
             let status_line = Line::from(status_text);
-            let status_line = match settings.theme {
+            let status_line = match ctx.settings.theme {
                 Theme::HighContrast => status_line.on_yellow().black(),
                 Theme::Default => status_line.on_dark_gray().white(),
             };
@@ -310,7 +315,7 @@ impl Screen {
         }
 
         // Render help overlay if needed
-        if show_help {
+        if ctx.show_help {
             let popup_area = self.centered_rect(90, 90, frame.area());
             frame.render_widget(Clear, popup_area);
             frame.render_widget(
