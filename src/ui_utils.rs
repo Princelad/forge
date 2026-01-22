@@ -55,3 +55,8 @@ pub fn auto_scroll(selected: usize, scroll: &mut usize, window_size: usize) {
 pub fn adjust_pane_ratio(current: u16, delta: i16) -> u16 {
     ((current as i16) + delta).clamp(20, 80) as u16
 }
+
+/// Safely decrements an index, returning the previous value or 0 if already at 0
+pub fn safe_decrement(index: usize) -> usize {
+    index.saturating_sub(1)
+}

@@ -52,6 +52,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consolidated pane ratio adjustment logic in `key_handler.rs` using helper function
 - Reduced 60+ lines of duplicate pane adjustment code to 8 lines
 
+### Fixed
+
+- Simplified navigation bounds checking throughout `key_handler.rs`:
+  - Replaced all `if index > 0 { index - 1 } else { index }` patterns with `saturating_sub()`
+  - Replaced all `if index < max { index + 1 } else { index }` patterns with `.min(max)`
+  - Reduced ~100 lines of conditional navigation code
+  - Applied to all views: Dashboard, Changes, CommitHistory, BranchManager, MergeVisualizer, ModuleManager, Settings
+- Added `safe_decrement()` helper to `ui_utils.rs` for future use
+- Removed unnecessary conditional returns in navigation handlers by using saturating arithmetic
+
 ### Changed
 
 - **BREAKING**: Renamed `FakeStore` to `Store` across entire codebase

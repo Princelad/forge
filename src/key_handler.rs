@@ -1192,11 +1192,7 @@ impl ActionProcessor {
 
     fn handle_navigate_up(ctx: &ActionContext) -> (ActionResult, ActionStateUpdate) {
         if ctx.focus == Focus::Menu {
-            let next_idx = if ctx.menu_selected_index > 0 {
-                ctx.menu_selected_index - 1
-            } else {
-                ctx.menu_selected_index
-            };
+            let next_idx = ctx.menu_selected_index.saturating_sub(1);
             (
                 ActionResult {
                     should_quit: false,
@@ -1209,91 +1205,54 @@ impl ActionProcessor {
             )
         } else {
             let update = match ctx.current_view {
-                AppMode::Dashboard => {
-                    if ctx.selected_project_index > 0 {
-                        ActionStateUpdate {
-                            selected_project_index: Some(ctx.selected_project_index - 1),
-                            clamp_selections: Some(()),
-                            ..Default::default()
-                        }
-                    } else {
-                        ActionStateUpdate::none()
-                    }
-                }
-                AppMode::Changes => {
-                    if ctx.selected_change_index > 0 {
-                        ActionStateUpdate {
-                            selected_change_index: Some(ctx.selected_change_index - 1),
-                            ..Default::default()
-                        }
-                    } else {
-                        ActionStateUpdate::none()
-                    }
-                }
-                AppMode::CommitHistory => {
-                    if ctx.selected_commit_index > 0 {
-                        ActionStateUpdate {
-                            selected_commit_index: Some(ctx.selected_commit_index - 1),
-                            ..Default::default()
-                        }
-                    } else {
-                        ActionStateUpdate::none()
-                    }
-                }
-                AppMode::BranchManager => {
-                    if ctx.selected_branch_index > 0 {
-                        ActionStateUpdate {
-                            selected_branch_index: Some(ctx.selected_branch_index - 1),
-                            ..Default::default()
-                        }
-                    } else {
-                        ActionStateUpdate::none()
-                    }
-                }
+                AppMode::Dashboard => ActionStateUpdate {
+                    selected_project_index: Some(ctx.selected_project_index.saturating_sub(1)),
+                    clamp_selections: Some(()),
+                    ..Default::default()
+                },
+                AppMode::Changes => ActionStateUpdate {
+                    selected_change_index: Some(ctx.selected_change_index.saturating_sub(1)),
+                    ..Default::default()
+                },
+                AppMode::CommitHistory => ActionStateUpdate {
+                    selected_commit_index: Some(ctx.selected_commit_index.saturating_sub(1)),
+                    ..Default::default()
+                },
+                AppMode::BranchManager => ActionStateUpdate {
+                    selected_branch_index: Some(ctx.selected_branch_index.saturating_sub(1)),
+                    ..Default::default()
+                },
                 AppMode::ProjectBoard => ActionStateUpdate {
                     navigate_board_up: Some(()),
                     ..Default::default()
                 },
-                AppMode::MergeVisualizer => {
-                    if ctx.selected_merge_file_index > 0 {
-                        ActionStateUpdate {
-                            selected_merge_file_index: Some(ctx.selected_merge_file_index - 1),
-                            ..Default::default()
-                        }
-                    } else {
-                        ActionStateUpdate::none()
-                    }
-                }
+                AppMode::MergeVisualizer => ActionStateUpdate {
+                    selected_merge_file_index: Some(
+                        ctx.selected_merge_file_index.saturating_sub(1),
+                    ),
+                    ..Default::default()
+                },
                 AppMode::ModuleManager => {
                     if ctx.module_assign_mode {
-                        // Navigate developer list in assign mode
-                        if ctx.selected_developer_index > 0 {
-                            ActionStateUpdate {
-                                selected_developer_index: Some(ctx.selected_developer_index - 1),
-                                ..Default::default()
-                            }
-                        } else {
-                            ActionStateUpdate::none()
-                        }
-                    } else if ctx.selected_module_index > 0 {
                         ActionStateUpdate {
-                            selected_module_index: Some(ctx.selected_module_index - 1),
+                            selected_developer_index: Some(
+                                ctx.selected_developer_index.saturating_sub(1),
+                            ),
                             ..Default::default()
                         }
                     } else {
-                        ActionStateUpdate::none()
-                    }
-                }
-                AppMode::Settings => {
-                    if ctx.selected_setting_index > 0 {
                         ActionStateUpdate {
-                            selected_setting_index: Some(ctx.selected_setting_index - 1),
+                            selected_module_index: Some(
+                                ctx.selected_module_index.saturating_sub(1),
+                            ),
                             ..Default::default()
                         }
-                    } else {
-                        ActionStateUpdate::none()
                     }
                 }
+                AppMode::Settings => ActionStateUpdate {
+                    selected_setting_index: Some(ctx.selected_setting_index.saturating_sub(1)),
+                    ..Default::default()
+                },
             };
             (
                 ActionResult {
@@ -1307,11 +1266,7 @@ impl ActionProcessor {
 
     fn handle_navigate_down(ctx: &ActionContext) -> (ActionResult, ActionStateUpdate) {
         if ctx.focus == Focus::Menu {
-            let next_idx = if ctx.menu_selected_index < 7 {
-                ctx.menu_selected_index + 1
-            } else {
-                ctx.menu_selected_index
-            };
+            let next_idx = (ctx.menu_selected_index + 1).min(7);
             (
                 ActionResult {
                     should_quit: false,
