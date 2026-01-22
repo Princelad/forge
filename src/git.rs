@@ -910,4 +910,229 @@ mod integration_tests {
             "Newly initialized repo should have no remotes"
         );
     }
+
+    #[test]
+    fn test_branch_create_and_switch_workflow() {
+        // This tests: branch create → switch → commit
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit on main/master
+        let file1 = repo_path.join("initial.txt");
+        fs::write(&file1, "initial content").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("initial.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig =
+            git2::Signature::now("Test User", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+
+        // Create new branch
+        let branch_result = client.create_branch("feature/test");
+        assert!(branch_result.is_ok(), "Should create branch successfully");
+
+        // Verify branch exists in list
+        let branches = client
+            .list_branches(true, true)
+            .expect("Failed to list branches");
+        let branch_exists = branches
+            .iter()
+            .any(|(name, _is_current)| name.contains("feature/test"));
+        assert!(branch_exists, "Created branch should appear in branch list");
+
+        // Switch to new branch
+        let switch_result = client.checkout_branch("feature/test");
+        assert!(
+            switch_result.is_ok(),
+            "Should switch to feature/test branch"
+        );
+
+        // Verify we're on the correct branch
+        let current_branch = client.head_branch().expect("Failed to get current branch");
+        assert_eq!(
+            current_branch, "feature/test",
+            "Should be on feature/test branch after switch"
+        );
+
+        // Create and commit a new file on the branch
+        let feature_file = repo_path.join("feature.txt");
+        fs::write(&feature_file, "feature content").expect("Failed to write feature file");
+
+        let commit_result = client.commit_all("Add feature file");
+        assert!(
+            commit_result.is_ok(),
+            "Should commit on feature branch successfully"
+        );
+
+        // Verify the commit created a change
+        let history = client
+            .get_commit_history(50)
+            .expect("Failed to list history");
+        assert!(
+            history.len() >= 2,
+            "Should have at least 2 commits (initial + feature)"
+        );
+    }
+
+    #[test]
+    fn test_commit_and_diff_workflow() {
+        // This tests: modify files → stage → diff → commit
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let initial_file = repo_path.join("file.txt");
+        fs::write(&initial_file, "initial\n").expect("Failed to write file");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("file.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig = git2::Signature::now("Test", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+
+        // Modify the file
+        fs::write(&initial_file, "initial\nmodified line\n").expect("Failed to modify file");
+
+        // List changes - should show modified file
+        let changes = client.list_changes().expect("Failed to list changes");
+        assert!(
+            !changes.is_empty(),
+            "Should detect modified file in changes"
+        );
+
+        // Find the modified file
+        let modified_change = changes.iter().find(|c| c.path == "file.txt");
+        assert!(modified_change.is_some(), "Should find modified file");
+
+        // Stage the modification
+        let stage_result = client.stage_file("file.txt");
+        assert!(stage_result.is_ok(), "Should stage file");
+
+        // Get staged changes
+        let staged = client.list_changes().expect("Failed to list staged");
+        assert!(!staged.is_empty(), "Should have staged changes");
+
+        // Commit the changes
+        let commit_result = client.commit_all("Modify file with new line");
+        assert!(commit_result.is_ok(), "Should commit staged changes");
+
+        // Verify no more changes after commit
+        let changes_after = client.list_changes().expect("Failed to list after commit");
+        assert!(
+            changes_after.is_empty(),
+            "Should have no changes after commit"
+        );
+    }
+
+    #[test]
+    fn test_multiple_file_staging_workflow() {
+        // This tests: create multiple files → selective staging → commit
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let file0 = repo_path.join("initial.txt");
+        fs::write(&file0, "initial").expect("Failed to write");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("initial.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig = git2::Signature::now("Test", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+
+        // Create multiple new files
+        fs::write(repo_path.join("tracked.txt"), "content1").expect("Failed to write");
+        fs::write(repo_path.join("untracked.txt"), "content2").expect("Failed to write");
+
+        // List changes - should show both files
+        let changes = client.list_changes().expect("Failed to list changes");
+        assert!(changes.len() >= 2, "Should detect both new files");
+
+        // Stage only the first file
+        let stage_result = client.stage_file("tracked.txt");
+        assert!(stage_result.is_ok(), "Should stage first file");
+
+        // Commit only staged file
+        let commit_result = client.commit_all("Add tracked file only");
+        assert!(commit_result.is_ok(), "Should commit successfully");
+
+        // Untracked file should still be present in changes
+        let remaining = client.list_changes().expect("Failed to list remaining");
+        let untracked = remaining.iter().find(|c| c.path == "untracked.txt");
+        assert!(
+            untracked.is_some(),
+            "Untracked file should still be in changes"
+        );
+    }
+
+    #[test]
+    fn test_unstage_workflow() {
+        // This tests: create file → stage → unstage → verify
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let initial = repo_path.join("initial.txt");
+        fs::write(&initial, "initial").expect("Failed to write");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("initial.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig = git2::Signature::now("Test", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+
+        // Create and stage a file
+        fs::write(repo_path.join("test.txt"), "test content").expect("Failed to write");
+        let stage_result = client.stage_file("test.txt");
+        assert!(stage_result.is_ok(), "Should stage file");
+
+        // Unstage the file
+        let unstage_result = client.unstage_file("test.txt");
+        assert!(unstage_result.is_ok(), "Should unstage file");
+
+        // Verify the change is still there but unstaged
+        let changes = client.list_changes().expect("Failed to list changes");
+        let found = changes.iter().find(|c| c.path == "test.txt");
+        assert!(
+            found.is_some(),
+            "File should still be in changes after unstaging"
+        );
+    }
 }
