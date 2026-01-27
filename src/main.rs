@@ -14,7 +14,7 @@ pub mod ui_utils;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
-use pages::branch_manager::BranchInfo;
+use pages::branch_manager::{BranchInfo, UpstreamStatus};
 use pages::commit_history::CommitInfo;
 use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
@@ -1018,17 +1018,27 @@ impl App {
         if let Some(client) = &self.git_client {
             match self.current_view {
                 AppMode::BranchManager => {
-                    if let Ok(branches) = client.list_branches(true, true) {
+                    if let Ok(branches) = client.list_branches_with_upstream(true, true) {
                         let branch_infos: Vec<BranchInfo> = branches
                             .into_iter()
-                            .map(|(name, is_current)| {
-                                let is_remote = name.contains('/');
+                            .map(|(name, is_current, is_remote, upstream)| {
+                                let upstream_status =
+                                    if !is_remote {
+                                        upstream.as_ref().and_then(|_| {
+                                            client.get_ahead_behind(&name).ok().flatten().map(
+                                                |(ahead, behind)| UpstreamStatus { ahead, behind },
+                                            )
+                                        })
+                                    } else {
+                                        None
+                                    };
+
                                 BranchInfo {
                                     name,
                                     is_current,
                                     is_remote,
-                                    upstream: None,
-                                    upstream_status: None,
+                                    upstream,
+                                    upstream_status,
                                 }
                             })
                             .collect();

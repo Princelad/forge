@@ -135,6 +135,9 @@ impl BranchManager {
                 } else if b.upstream.is_some() && !b.is_remote {
                     // Has upstream but no status calculated yet
                     line_spans.push(Span::styled(" ↔", Style::new().fg(Color::Gray)));
+                } else if !b.is_remote {
+                    // Local branch without upstream tracking
+                    line_spans.push(Span::styled(" (no upstream)", Style::new().fg(Color::Red)));
                 }
 
                 line_spans.push(branch_type);
