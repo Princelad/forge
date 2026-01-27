@@ -449,10 +449,20 @@ impl GitClient {
 
     /// Delete a branch
     pub fn delete_branch(&self, branch_name: &str) -> Result<()> {
-        let mut branch = self
-            .repo
-            .find_branch(branch_name, git2::BranchType::Local)?;
-        branch.delete()?;
+        // Check if it's a remote branch (contains '/')
+        if branch_name.contains('/') {
+            // Delete remote branch by deleting the remote reference
+            let mut branch = self
+                .repo
+                .find_branch(branch_name, git2::BranchType::Remote)?;
+            branch.delete()?;
+        } else {
+            // Delete local branch
+            let mut branch = self
+                .repo
+                .find_branch(branch_name, git2::BranchType::Local)?;
+            branch.delete()?;
+        }
         Ok(())
     }
 

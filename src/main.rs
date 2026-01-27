@@ -1018,13 +1018,16 @@ impl App {
         if let Some(client) = &self.git_client {
             match self.current_view {
                 AppMode::BranchManager => {
-                    if let Ok(branches) = client.list_branches(true, false) {
+                    if let Ok(branches) = client.list_branches(true, true) {
                         let branch_infos: Vec<BranchInfo> = branches
                             .into_iter()
-                            .map(|(name, is_current)| BranchInfo {
-                                name,
-                                is_current,
-                                is_remote: false,
+                            .map(|(name, is_current)| {
+                                let is_remote = name.contains('/');
+                                BranchInfo {
+                                    name,
+                                    is_current,
+                                    is_remote,
+                                }
                             })
                             .collect();
                         self.branch_manager.update_branches(branch_infos);
