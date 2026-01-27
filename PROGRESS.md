@@ -1,10 +1,6 @@
 # Progress
 
 - Pending:
-  - [ ] Remote branch tracking
-    - [ ] Parse remote branches from git2
-    - [ ] Display remote branches in UI
-    - [ ] Handle branch deletion
   - [ ] Upstream tracking display
     - [ ] Detect upstream branch
     - [ ] Show upstream status (ahead/behind)
@@ -29,6 +25,10 @@
 - Ongoing: [ ]
 
 - Completed:
+  - [x] Remote branch tracking
+    - [x] Parse remote branches from git2
+    - [x] Display remote branches in UI
+    - [x] Handle branch deletion
   - [x] Remote fetch/pull/push with progress
   - [x] State extraction into page structs
   - [x] Background task improvements
