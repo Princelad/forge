@@ -1,6 +1,6 @@
 # Forge v0.2.0 Progress Tracking
 
-**Updated:** Jan 27, 2026 | **Version:** 0.1.0 → 0.2.0 | **Status:** 🔄 Task 1 Complete
+**Updated:** Jan 28, 2026 | **Version:** 0.1.0 → 0.2.0 | **Status:** 🔄 Task 2 Complete
 
 ---
 
@@ -11,7 +11,7 @@
 **v0.1.0 Status:** ✅ Complete
 
 - 11 UI pages, full Git integration, Kanban board, 33+ tests, 11 benchmarks
-- 1542-line App struct (needs refactoring), 30+ state fields scattered across pages
+- ~~1542-line App struct (needs refactoring), 30+ state fields scattered across pages~~ **REFACTORED**
 
 **v0.2.0 Scope (FINALIZED):** Remote ops + App state extraction → **2-3 weeks**
 
@@ -43,15 +43,32 @@
 - 13 new integration tests (50+ total tests passing)
 - All code passes `cargo clippy -- -D warnings`
 
-### Task 2: App State Extraction (3-4 days)
+### Task 2: App State Extraction (3-4 days) ✅ COMPLETE
 
-**Files:** `src/main.rs` (1542 lines, extract 30+ fields into 7 structs)
+**Files:** `src/main.rs`, `src/state/*.rs` (new module)
 
-- [ ] Define: `DashboardState`, `ChangesState`, `BoardState`, `MergeState`, `ModuleManagerState`, `BranchManagerState`, `CommitHistoryState`
-- [ ] Extract state fields → separate structs
-- [ ] Update event handlers + render functions
-- [ ] Unit tests for isolated page logic
-- [ ] Full integration test
+- [x] Define: `DashboardState`, `ChangesState`, `BoardState`, `MergeState`, `ModuleManagerState`, `BranchManagerState`, `CommitHistoryState`
+- [x] Extract state fields → separate structs
+- [x] Update event handlers + render functions
+- [x] Unit tests for isolated page logic (88 new page state tests)
+- [x] Full integration test (155 tests passing)
+
+**Completed:** Created `src/state/` module with 7 page state structs:
+
+- `DashboardState` — Project list navigation, scroll, pane ratio
+- `ChangesState` — File selection, commit message, pane ratios
+- `BoardState` — Kanban column/item navigation with wrapping
+- `MergeState` — 3-pane conflict resolution with accept methods
+- `ModuleManagerState` — Modes, selections, input buffer, assign mode
+- `BranchManagerState` — Branch list, create mode, input handling
+- `CommitHistoryState` — Commit list navigation, scroll, caching
+
+**Impact:**
+
+- App struct reduced from 30+ scattered fields to 7 organized state structs
+- 88 new unit tests for page-specific logic
+- 155 total tests passing (was 50+)
+- All code passes `cargo clippy -- -D warnings`
 
 **Why:** Reduces App complexity ~60%, fixes testability blocker, foundation for v0.3.0 state machine
 
@@ -81,11 +98,11 @@
 
 ### Technical Debt (Priority Order)
 
-| Issue                   | Effort | Impact                  | v0.2.0?                 |
-| ----------------------- | ------ | ----------------------- | ----------------------- |
-| 30-field App struct     | 8-10d  | Blocks feature velocity | **Extract only** (3-4d) |
-| Unwrap/clone usage      | 1-2d   | Style violation         | Defer v0.3.0            |
-| Benchmark error logging | 2-4h   | Silent failures         | Defer v0.3.0            |
+| Issue                   | Effort    | Impact                      | v0.2.0?                              |
+| ----------------------- | --------- | --------------------------- | ------------------------------------ |
+| ~~30-field App struct~~ | ~~8-10d~~ | ~~Blocks feature velocity~~ | **✅ DONE** (extracted to 7 structs) |
+| Unwrap/clone usage      | 1-2d      | Style violation             | Defer v0.3.0                         |
+| Benchmark error logging | 2-4h      | Silent failures             | Defer v0.3.0                         |
 
 ---
 
@@ -129,12 +146,22 @@
 - [x] All code passes `cargo clippy -- -D warnings`
       **Completed:** Task 1 (Remote Operations) in 1 session!
 
-### Session 3
+### Session 3 (Jan 28, 2026) ✅
 
-- [ ] Extract 7 page state structs
-- [ ] Unit test each page logic
-- [ ] Full integration testing
-      **Target:** 3-4 days, can parallel with Session 2
+- [x] Extract 7 page state structs to `src/state/` module
+- [x] DashboardState — navigation, scroll, pane ratio with tests
+- [x] ChangesState — file selection, commit message, ratios with tests
+- [x] BoardState — Kanban navigation with wrapping and tests
+- [x] MergeState — 3-pane resolution, accept methods with tests
+- [x] ModuleManagerState — modes, selections, input with tests
+- [x] BranchManagerState — branch list, create mode with tests
+- [x] CommitHistoryState — commit navigation, caching with tests
+- [x] Update App struct to use new state structs
+- [x] Update all render/handler methods with new field paths
+- [x] Add Default derives to BranchManagerMode, MergePaneFocus, ModuleManagerMode
+- [x] Fix doc test in async_task.rs
+- [x] 155 tests passing, clippy clean
+      **Completed:** Task 2 (App State Extraction) in 1 session!
 
 ### Session 4
 
@@ -159,9 +186,10 @@
 
 **Core:**
 
-- `src/main.rs` — 1542 LOC, App struct + event loop (needs refactor)
-- `src/git.rs` — ~700 LOC, Git operations (add: push/pull/fetch)
-- `src/async_task.rs` — ~200 LOC, Background tasks (add: remote ops)
+- `src/main.rs` — App struct + event loop (refactored: 7 state structs)
+- `src/state/` — NEW: 7 page state structs with 88 unit tests
+- `src/git.rs` — ~700 LOC, Git operations (v0.2.0: push/pull/fetch with progress)
+- `src/async_task.rs` — ~200 LOC, Background tasks (v0.2.0: remote ops)
 - `src/data.rs` — ~400 LOC, Models + persistence
 
 **Pages (src/pages/):**
@@ -170,7 +198,7 @@
 
 **Testing:**
 
-- Tests: 33+ unit tests in `data.rs`, `git.rs`, `async_task.rs`, `key_handler.rs`
+- Tests: 155 unit tests in `data.rs`, `git.rs`, `async_task.rs`, `key_handler.rs`, `state/*.rs`
 - Benchmarks: 11 criterion benchmarks in `benches/`
 - Report: `target/criterion/report/index.html`
 

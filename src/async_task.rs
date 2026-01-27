@@ -13,6 +13,7 @@
 //! # Usage
 //!
 //! ```no_run
+//! use std::path::PathBuf;
 //! use forge::async_task::{TaskManager, GitOperation};
 //!
 //! // Create a task manager
@@ -23,7 +24,7 @@
 //!
 //! // Poll for completion in your event loop
 //! if let Some(result) = tm.try_recv() {
-//!     match result {
+//!     match result.result {
 //!         Ok(status) => println!("Success: {}", status),
 //!         Err(e) => println!("Error: {}", e),
 //!     }
