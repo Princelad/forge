@@ -14,8 +14,9 @@ pub struct BranchInfo {
     pub is_remote: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum BranchManagerMode {
+    #[default]
     List,
     CreateBranch,
 }
