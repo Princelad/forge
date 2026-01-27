@@ -1,10 +1,6 @@
 # Progress
 
 - Pending:
-  - [ ] Upstream tracking display
-    - [ ] Detect upstream branch
-    - [ ] Show upstream status (ahead/behind)
-    - [ ] Handle untracked branches
   - [ ] Handle corrupted Git repos
     - [ ] Add validation on repo open
     - [ ] Implement recovery options
@@ -25,6 +21,10 @@
 - Ongoing: [ ]
 
 - Completed:
+  - [x] Upstream tracking display
+    - [x] Detect upstream branch
+    - [x] Show upstream status (ahead/behind)
+    - [x] Handle untracked branches
   - [x] Remote branch tracking
     - [x] Parse remote branches from git2
     - [x] Display remote branches in UI
