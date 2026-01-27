@@ -12,6 +12,7 @@ pub struct BranchInfo {
     pub name: String,
     pub is_current: bool,
     pub is_remote: bool,
+    pub upstream: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

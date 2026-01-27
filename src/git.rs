@@ -429,6 +429,79 @@ impl GitClient {
         Ok(branches)
     }
 
+    /// List branches with upstream tracking information.
+    ///
+    /// Returns a vector of (branch_name, is_current, is_remote, upstream) tuples.
+    pub fn list_branches_with_upstream(
+        &self,
+        local: bool,
+        remote: bool,
+    ) -> Result<Vec<(String, bool, bool, Option<String>)>> {
+        let mut branches = Vec::new();
+        let current_branch = self.head_branch().unwrap_or_default();
+
+        // List local branches with upstream info
+        if local {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Local))?;
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    let is_current = name == current_branch;
+                    // Get upstream for this local branch
+                    let upstream = self.get_upstream_branch(name).unwrap_or(None);
+                    branches.push((name.to_string(), is_current, false, upstream));
+                }
+            }
+        }
+
+        // List remote branches (no upstream for remote branches)
+        if remote {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Remote))?;
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    branches.push((name.to_string(), false, true, None));
+                }
+            }
+        }
+
+        Ok(branches)
+    }
+
+    /// Get the upstream branch for a given local branch.
+    ///
+    /// Returns `None` if the branch has no upstream tracking configured.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Remote branch**: Returns `None` (remote branches don't have upstreams)
+    /// - **No tracking branch**: Returns `None` if not configured with `git branch -u`
+    /// - **Invalid upstream**: Returns `None` if upstream reference is broken
+    pub fn get_upstream_branch(&self, branch_name: &str) -> Result<Option<String>> {
+        // Try to find the local branch
+        match self.repo.find_branch(branch_name, git2::BranchType::Local) {
+            Ok(branch) => {
+                // Get the upstream branch if it exists
+                match branch.upstream() {
+                    Ok(upstream_branch) => {
+                        if let Ok(upstream_name) = upstream_branch.name() {
+                            if let Some(name) = upstream_name {
+                                return Ok(Some(name.to_string()));
+                            }
+                        }
+                        Ok(None)
+                    }
+                    Err(_) => {
+                        // No upstream branch configured
+                        Ok(None)
+                    }
+                }
+            }
+            Err(_) => {
+                // Not a local branch (e.g., remote branch)
+                Ok(None)
+            }
+        }
+    }
+
     /// Switch to a different branch
     pub fn checkout_branch(&self, branch_name: &str) -> Result<()> {
         let obj = self

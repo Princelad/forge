@@ -159,16 +159,19 @@ mod tests {
                 name: "main".to_string(),
                 is_current: true,
                 is_remote: false,
+                upstream: None,
             },
             BranchInfo {
                 name: "develop".to_string(),
                 is_current: false,
                 is_remote: false,
+                upstream: Some("origin/develop".to_string()),
             },
             BranchInfo {
                 name: "feature/test".to_string(),
                 is_current: false,
                 is_remote: false,
+                upstream: None,
             },
         ]
     }
@@ -185,7 +188,7 @@ mod tests {
     #[test]
     fn test_create_mode_toggle() {
         let mut state = BranchManagerState::new();
-        
+
         assert!(!state.is_create_mode());
         state.enter_create_mode();
         assert!(state.is_create_mode());
@@ -197,7 +200,7 @@ mod tests {
     fn test_enter_create_mode_clears_input() {
         let mut state = BranchManagerState::new();
         state.input_buffer = "existing".to_string();
-        
+
         state.enter_create_mode();
         assert!(state.input_buffer.is_empty());
     }
@@ -207,7 +210,7 @@ mod tests {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
         state.selected_index = 2;
-        
+
         assert!(state.navigate_up());
         assert_eq!(state.selected_index, 1);
     }
@@ -216,7 +219,7 @@ mod tests {
     fn test_navigate_up_at_top() {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
-        
+
         assert!(!state.navigate_up());
         assert_eq!(state.selected_index, 0);
     }
@@ -225,7 +228,7 @@ mod tests {
     fn test_navigate_down() {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
-        
+
         assert!(state.navigate_down());
         assert_eq!(state.selected_index, 1);
     }
@@ -235,7 +238,7 @@ mod tests {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
         state.selected_index = 2;
-        
+
         assert!(!state.navigate_down());
         assert_eq!(state.selected_index, 2);
     }
@@ -243,18 +246,18 @@ mod tests {
     #[test]
     fn test_input_operations() {
         let mut state = BranchManagerState::new();
-        
+
         assert!(state.is_input_empty());
-        
+
         state.append_input_char('f');
         state.append_input_char('o');
         state.append_input_char('o');
         assert_eq!(state.input_buffer, "foo");
         assert!(!state.is_input_empty());
-        
+
         assert!(state.pop_input_char());
         assert_eq!(state.input_buffer, "fo");
-        
+
         state.clear_input();
         assert!(state.is_input_empty());
     }
@@ -264,7 +267,7 @@ mod tests {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
         state.selected_index = 1;
-        
+
         let branch = state.selected_branch().unwrap();
         assert_eq!(branch.name, "develop");
         assert_eq!(state.selected_branch_name(), Some("develop"));
@@ -274,9 +277,9 @@ mod tests {
     fn test_is_selected_current() {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
-        
+
         assert!(state.is_selected_current()); // index 0 is main (current)
-        
+
         state.selected_index = 1;
         assert!(!state.is_selected_current()); // develop is not current
     }
@@ -286,9 +289,9 @@ mod tests {
         let mut state = BranchManagerState::new();
         state.selected_index = 5;
         state.scroll = 3;
-        
+
         state.update_branches(sample_branches());
-        
+
         assert_eq!(state.branch_count(), 3);
         assert_eq!(state.selected_index, 0);
         assert_eq!(state.scroll, 0);
@@ -299,7 +302,7 @@ mod tests {
         let mut state = BranchManagerState::new();
         state.cached_branches = sample_branches();
         state.selected_index = 10;
-        
+
         state.clamp_selection();
         assert_eq!(state.selected_index, 2);
     }
@@ -308,7 +311,7 @@ mod tests {
     fn test_clamp_selection_empty() {
         let mut state = BranchManagerState::new();
         state.selected_index = 5;
-        
+
         state.clamp_selection();
         assert_eq!(state.selected_index, 0);
     }
