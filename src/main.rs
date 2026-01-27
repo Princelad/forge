@@ -1028,6 +1028,7 @@ impl App {
                                     is_current,
                                     is_remote,
                                     upstream: None,
+                                    upstream_status: None,
                                 }
                             })
                             .collect();

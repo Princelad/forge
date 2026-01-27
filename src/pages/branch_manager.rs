@@ -7,12 +7,22 @@ use ratatui::{
     Frame,
 };
 
+/// Upstream tracking status for a branch
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct UpstreamStatus {
+    /// Number of commits ahead of upstream
+    pub ahead: usize,
+    /// Number of commits behind upstream
+    pub behind: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct BranchInfo {
     pub name: String,
     pub is_current: bool,
     pub is_remote: bool,
     pub upstream: Option<String>,
+    pub upstream_status: Option<UpstreamStatus>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -108,7 +118,28 @@ impl BranchManager {
                     },
                 );
 
-                ListItem::new(Line::from(vec![prefix, name, branch_type]))
+                // Render upstream status if available
+                let mut line_spans = vec![prefix, name];
+
+                if let Some(status) = b.upstream_status {
+                    let mut info = String::new();
+                    if status.ahead > 0 {
+                        info.push_str(&format!(" ↑{}", status.ahead));
+                    }
+                    if status.behind > 0 {
+                        info.push_str(&format!(" ↓{}", status.behind));
+                    }
+                    if !info.is_empty() {
+                        line_spans.push(Span::styled(info, Style::new().fg(Color::Yellow)));
+                    }
+                } else if b.upstream.is_some() && !b.is_remote {
+                    // Has upstream but no status calculated yet
+                    line_spans.push(Span::styled(" ↔", Style::new().fg(Color::Gray)));
+                }
+
+                line_spans.push(branch_type);
+
+                ListItem::new(Line::from(line_spans))
             })
             .collect();
 

@@ -160,18 +160,24 @@ mod tests {
                 is_current: true,
                 is_remote: false,
                 upstream: None,
+                upstream_status: None,
             },
             BranchInfo {
                 name: "develop".to_string(),
                 is_current: false,
                 is_remote: false,
                 upstream: Some("origin/develop".to_string()),
+                upstream_status: Some(crate::pages::branch_manager::UpstreamStatus {
+                    ahead: 2,
+                    behind: 0,
+                }),
             },
             BranchInfo {
                 name: "feature/test".to_string(),
                 is_current: false,
                 is_remote: false,
                 upstream: None,
+                upstream_status: None,
             },
         ]
     }

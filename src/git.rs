@@ -42,6 +42,9 @@ use git2::{DiffFormat, DiffOptions, IndexAddOption, Repository, Signature, Statu
 
 use crate::data::{Change, FileStatus};
 
+/// Branch info: (name, is_current, is_remote, upstream)
+pub type BranchData = (String, bool, bool, Option<String>);
+
 /// Transfer progress for remote operations (fetch/push)
 #[derive(Debug, Clone, Default)]
 pub struct TransferProgress {
@@ -436,7 +439,7 @@ impl GitClient {
         &self,
         local: bool,
         remote: bool,
-    ) -> Result<Vec<(String, bool, bool, Option<String>)>> {
+    ) -> Result<Vec<BranchData>> {
         let mut branches = Vec::new();
         let current_branch = self.head_branch().unwrap_or_default();
 
@@ -482,10 +485,8 @@ impl GitClient {
                 // Get the upstream branch if it exists
                 match branch.upstream() {
                     Ok(upstream_branch) => {
-                        if let Ok(upstream_name) = upstream_branch.name() {
-                            if let Some(name) = upstream_name {
-                                return Ok(Some(name.to_string()));
-                            }
+                        if let Ok(Some(name)) = upstream_branch.name() {
+                            return Ok(Some(name.to_string()));
                         }
                         Ok(None)
                     }
@@ -500,6 +501,57 @@ impl GitClient {
                 Ok(None)
             }
         }
+    }
+
+    /// Calculate how many commits a branch is ahead/behind its upstream.
+    ///
+    /// Returns `Ok(None)` if the branch has no upstream or if calculation fails gracefully.
+    /// Returns `Ok(Some((ahead, behind)))` with the commit counts.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **No upstream**: Returns `Ok(None)`
+    /// - **Upstream not found**: Returns `Ok(None)` (gracefully handles missing upstream)
+    /// - **Detached HEAD**: Returns `Ok(None)` (not on a branch)
+    pub fn get_ahead_behind(&self, branch_name: &str) -> Result<Option<(usize, usize)>> {
+        // Get the upstream branch
+        let upstream_name = match self.get_upstream_branch(branch_name)? {
+            Some(name) => name,
+            None => return Ok(None),
+        };
+
+        // Get local branch commit oid
+        let local_branch = match self.repo.find_branch(branch_name, git2::BranchType::Local) {
+            Ok(branch) => branch,
+            Err(_) => return Ok(None),
+        };
+
+        let local_oid = match local_branch.get().target() {
+            Some(oid) => oid,
+            None => return Ok(None),
+        };
+
+        // Get upstream branch commit oid
+        let upstream_branch = match self
+            .repo
+            .find_branch(&upstream_name, git2::BranchType::Remote)
+        {
+            Ok(branch) => branch,
+            Err(_) => return Ok(None),
+        };
+
+        let upstream_oid = match upstream_branch.get().target() {
+            Some(oid) => oid,
+            None => return Ok(None),
+        };
+
+        // Use git_graph_ahead_behind to calculate the difference
+        let (ahead, behind) = self
+            .repo
+            .graph_ahead_behind(local_oid, upstream_oid)
+            .unwrap_or((0, 0));
+
+        Ok(Some((ahead, behind)))
     }
 
     /// Switch to a different branch
