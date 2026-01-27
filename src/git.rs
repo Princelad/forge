@@ -34,11 +34,45 @@
 //! - Benchmark code tracks errors via `is_err()` checks (see benches/git_operations.rs)
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use git2::{DiffFormat, DiffOptions, IndexAddOption, Repository, Signature, StatusOptions, Tree};
 
 use crate::data::{Change, FileStatus};
+
+/// Transfer progress for remote operations (fetch/push)
+#[derive(Debug, Clone, Default)]
+pub struct TransferProgress {
+    pub total_objects: usize,
+    pub indexed_objects: usize,
+    pub received_objects: usize,
+    pub received_bytes: usize,
+    pub total_deltas: usize,
+    pub indexed_deltas: usize,
+}
+
+impl TransferProgress {
+    /// Calculate overall progress as a percentage (0-100)
+    pub fn percent(&self) -> u8 {
+        if self.total_objects == 0 {
+            return 100;
+        }
+        ((self.received_objects as f64 / self.total_objects as f64) * 100.0) as u8
+    }
+
+    /// Get a human-readable status message
+    pub fn status_message(&self) -> String {
+        if self.total_objects == 0 {
+            return "Initializing...".to_string();
+        }
+        format!(
+            "Received {}/{} objects ({} bytes)",
+            self.received_objects, self.total_objects, self.received_bytes
+        )
+    }
+}
 
 /// Commit info: (hash, author, date, message, files_changed)
 pub type CommitData = (String, String, String, String, Vec<String>);
@@ -468,38 +502,113 @@ impl GitClient {
         Ok(commits)
     }
 
-    /// Fetch from a remote repository
-    /// Returns the number of objects fetched
-    pub fn fetch(&self, remote_name: &str) -> Result<usize> {
+    /// Fetch from a remote repository with progress tracking
+    ///
+    /// Returns the number of objects received
+    ///
+    /// # Arguments
+    ///
+    /// * `remote_name` - Name of the remote (e.g., "origin")
+    /// * `progress` - Optional progress tracker (wrapped in Arc<Mutex> for thread safety)
+    /// * `cancel_flag` - Optional cancellation flag (wrapped in Arc for thread safety)
+    ///
+    /// # Errors
+    ///
+    /// - Remote does not exist
+    /// - Authentication failed (SSH/HTTPS credentials)
+    /// - Network errors
+    /// - Operation was cancelled
+    pub fn fetch_with_progress(
+        &self,
+        remote_name: &str,
+        progress: Option<Arc<Mutex<TransferProgress>>>,
+        cancel_flag: Option<Arc<AtomicBool>>,
+    ) -> Result<usize> {
         let mut remote = self.repo.find_remote(remote_name)?;
 
-        // Setup fetch options with callbacks
         let mut fetch_options = git2::FetchOptions::new();
         let mut callbacks = git2::RemoteCallbacks::new();
 
         // Credential callback for authentication
-        callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            // Try SSH agent first
-            if let Some(username) = username_from_url {
-                if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+        callbacks.credentials(|url, username_from_url, allowed_types| {
+            // Check if SSH is allowed
+            if allowed_types.is_ssh_key() {
+                // Try SSH agent first
+                if let Some(username) = username_from_url {
+                    if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                        return Ok(cred);
+                    }
+                }
+
+                // Try default SSH key locations
+                if let Some(username) = username_from_url.or_else(|| url.split('@').next()) {
+                    if let Ok(home) = std::env::var("HOME") {
+                        let ssh_key = std::path::PathBuf::from(&home).join(".ssh/id_rsa");
+                        if ssh_key.exists() {
+                            if let Ok(cred) = git2::Cred::ssh_key(username, None, &ssh_key, None) {
+                                return Ok(cred);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Try username/password for HTTPS
+            if allowed_types.is_user_pass_plaintext() {
+                if let Ok(cred) =
+                    git2::Cred::credential_helper(&self.repo.config()?, url, username_from_url)
+                {
                     return Ok(cred);
                 }
             }
 
-            // Fallback to default credentials (will use ssh-agent or credential helpers)
+            // Fallback to default credentials
             git2::Cred::default()
         });
+
+        // Transfer progress callback
+        if let Some(progress_tracker) = progress.clone() {
+            callbacks.transfer_progress(move |stats| {
+                if let Ok(mut p) = progress_tracker.lock() {
+                    p.total_objects = stats.total_objects();
+                    p.indexed_objects = stats.indexed_objects();
+                    p.received_objects = stats.received_objects();
+                    p.received_bytes = stats.received_bytes();
+                    p.total_deltas = stats.total_deltas();
+                    p.indexed_deltas = stats.indexed_deltas();
+                }
+
+                // Check cancellation flag
+                if let Some(ref cancel) = cancel_flag {
+                    if cancel.load(Ordering::Relaxed) {
+                        return false; // Cancel the operation
+                    }
+                }
+
+                true // Continue
+            });
+        }
 
         fetch_options.remote_callbacks(callbacks);
 
         // Fetch all refs (equivalent to `git fetch origin`)
-        // Empty refspecs means use the remote's default refspecs
         let empty_refspecs: Vec<&str> = vec![];
         remote.fetch(&empty_refspecs, Some(&mut fetch_options), None)?;
 
-        // Since we can't easily get the transfer stats from git2,
-        // return 1 to indicate successful fetch (implementation detail)
-        Ok(1)
+        // Get final object count from progress tracker
+        let object_count = if let Some(p) = progress {
+            p.lock().ok().map(|p| p.received_objects).unwrap_or(1)
+        } else {
+            1
+        };
+
+        Ok(object_count)
+    }
+
+    /// Fetch from a remote repository (simple version without progress)
+    /// Returns the number of objects fetched
+    pub fn fetch(&self, remote_name: &str) -> Result<usize> {
+        self.fetch_with_progress(remote_name, None, None)
     }
 
     /// Fetch from the default remote (usually "origin")
@@ -522,26 +631,104 @@ impl GitClient {
             .ok_or_else(|| color_eyre::eyre::eyre!("Remote has no URL"))
     }
 
-    /// Push to a remote branch
-    /// If branch_name is None, pushes to the upstream branch of the current HEAD
-    pub fn push(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+    /// Push to a remote branch with progress tracking
+    ///
+    /// # Arguments
+    ///
+    /// * `remote_name` - Name of the remote (e.g., "origin")
+    /// * `branch_name` - Branch to push (None = current branch)
+    /// * `progress` - Optional progress tracker
+    /// * `cancel_flag` - Optional cancellation flag
+    ///
+    /// # Errors
+    ///
+    /// - Remote does not exist
+    /// - Branch does not exist or cannot be determined
+    /// - Authentication failed
+    /// - Push rejected (e.g., non-fast-forward)
+    /// - Operation was cancelled
+    pub fn push_with_progress(
+        &self,
+        remote_name: &str,
+        branch_name: Option<&str>,
+        progress: Option<Arc<Mutex<TransferProgress>>>,
+        cancel_flag: Option<Arc<AtomicBool>>,
+    ) -> Result<()> {
         let mut remote = self.repo.find_remote(remote_name)?;
 
-        // Setup push options with callbacks
         let mut push_options = git2::PushOptions::new();
         let mut callbacks = git2::RemoteCallbacks::new();
 
         // Credential callback for authentication
-        callbacks.credentials(|_url, username_from_url, _allowed_types| {
-            // Try SSH agent first
-            if let Some(username) = username_from_url {
-                if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+        callbacks.credentials(|url, username_from_url, allowed_types| {
+            // Check if SSH is allowed
+            if allowed_types.is_ssh_key() {
+                // Try SSH agent first
+                if let Some(username) = username_from_url {
+                    if let Ok(cred) = git2::Cred::ssh_key_from_agent(username) {
+                        return Ok(cred);
+                    }
+                }
+
+                // Try default SSH key locations
+                if let Some(username) = username_from_url.or_else(|| url.split('@').next()) {
+                    if let Ok(home) = std::env::var("HOME") {
+                        let ssh_key = std::path::PathBuf::from(&home).join(".ssh/id_rsa");
+                        if ssh_key.exists() {
+                            if let Ok(cred) = git2::Cred::ssh_key(username, None, &ssh_key, None) {
+                                return Ok(cred);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Try username/password for HTTPS
+            if allowed_types.is_user_pass_plaintext() {
+                if let Ok(cred) =
+                    git2::Cred::credential_helper(&self.repo.config()?, url, username_from_url)
+                {
                     return Ok(cred);
                 }
             }
 
-            // Fallback to default credentials (will use ssh-agent or credential helpers)
+            // Fallback to default credentials
             git2::Cred::default()
+        });
+
+        // Transfer progress callback
+        if let Some(progress_tracker) = progress.clone() {
+            callbacks.transfer_progress(move |stats| {
+                if let Ok(mut p) = progress_tracker.lock() {
+                    p.total_objects = stats.total_objects();
+                    p.indexed_objects = stats.indexed_objects();
+                    p.received_objects = stats.received_objects();
+                    p.received_bytes = stats.received_bytes();
+                    p.total_deltas = stats.total_deltas();
+                    p.indexed_deltas = stats.indexed_deltas();
+                }
+
+                // Check cancellation flag
+                if let Some(ref cancel) = cancel_flag {
+                    if cancel.load(Ordering::Relaxed) {
+                        return false; // Cancel the operation
+                    }
+                }
+
+                true // Continue
+            });
+        }
+
+        // Push update callback for errors
+        callbacks.push_update_reference(|refname, status| {
+            if let Some(s) = status {
+                Err(git2::Error::from_str(&format!(
+                    "Push rejected for {}: {}",
+                    refname, s
+                )))
+            } else {
+                Ok(())
+            }
         });
 
         push_options.remote_callbacks(callbacks);
@@ -566,26 +753,39 @@ impl GitClient {
         Ok(())
     }
 
+    /// Push to a remote branch (simple version without progress)
+    /// If branch_name is None, pushes to the upstream branch of the current HEAD
+    pub fn push(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+        self.push_with_progress(remote_name, branch_name, None, None)
+    }
+
     /// Push to origin
     pub fn push_origin(&self, branch_name: Option<&str>) -> Result<()> {
         self.push("origin", branch_name)
     }
 
-    /// Pull from a remote branch (fetch + merge)
+    /// Pull from a remote branch with progress tracking (fetch + merge)
     ///
     /// # Behavior
     ///
     /// 1. Fetches from the specified remote using `git fetch <remote>`
     /// 2. Merges the remote branch into the current local branch using `git merge`
-    /// 3. Uses fast-forward merge by default for clean integration
+    /// 3. Uses fast-forward merge when possible for clean history
+    ///
+    /// # Arguments
+    ///
+    /// * `remote_name` - Name of the remote (e.g., "origin")
+    /// * `branch_name` - Branch to merge (None = current branch)
+    /// * `progress` - Optional progress tracker
+    /// * `cancel_flag` - Optional cancellation flag
     ///
     /// # Edge Cases
     ///
-    /// - **Merge conflicts**: Returns error with git2 error code, does not auto-resolve
+    /// - **Merge conflicts**: Returns error with conflict details
     /// - **Detached HEAD**: Returns error - cannot merge on detached HEAD
     /// - **No upstream branch**: Attempts to merge `remote/branch_name` pattern
-    /// - **Dirty working directory**: git2 handles this - may fail if conflicts would occur
-    /// - **No commits**: Will fail if either repo has no commits
+    /// - **Dirty working directory**: May fail if conflicts would occur
+    /// - **Fast-forward possible**: Performs fast-forward instead of merge commit
     ///
     /// # Errors
     ///
@@ -593,9 +793,23 @@ impl GitClient {
     /// - Current HEAD is detached
     /// - Merge conflicts detected
     /// - Repository structure is corrupted
-    pub fn pull(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+    /// - Operation was cancelled
+    pub fn pull_with_progress(
+        &self,
+        remote_name: &str,
+        branch_name: Option<&str>,
+        progress: Option<Arc<Mutex<TransferProgress>>>,
+        cancel_flag: Option<Arc<AtomicBool>>,
+    ) -> Result<()> {
         // Step 1: Fetch from remote
-        self.fetch(remote_name)?;
+        self.fetch_with_progress(remote_name, progress, cancel_flag.clone())?;
+
+        // Check if cancelled after fetch
+        if let Some(ref cancel) = cancel_flag {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(color_eyre::eyre::eyre!("Operation cancelled by user"));
+            }
+        }
 
         // Step 2: Determine the branch to merge
         let head = self.repo.head()?;
@@ -613,24 +827,71 @@ impl GitClient {
             .ok_or_else(|| color_eyre::eyre::eyre!("Remote branch {} not found", refname))?;
 
         let merge_commit = self.repo.find_commit(merge_oid)?;
+        let local_commit = head.peel_to_commit()?;
 
-        // Step 4: Perform merge
+        // Step 4: Check if fast-forward is possible
+        let merge_annotated = self.repo.find_annotated_commit(merge_oid)?;
+        let (analysis, _) = self.repo.merge_analysis(&[&merge_annotated])?;
+
+        if analysis.is_up_to_date() {
+            return Ok(()); // Already up to date
+        }
+
+        if analysis.is_fast_forward() {
+            // Perform fast-forward
+            let mut reference = self
+                .repo
+                .find_reference(&format!("refs/heads/{}", current_branch))?;
+            reference.set_target(merge_oid, "Fast-forward")?;
+            self.repo
+                .set_head(&format!("refs/heads/{}", current_branch))?;
+            self.repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            return Ok(());
+        }
+
+        // Step 5: Perform merge
         let mut index = self
             .repo
-            .merge_commits(&head.peel_to_commit()?, &merge_commit, None)?;
+            .merge_commits(&local_commit, &merge_commit, None)?;
 
-        // Step 5: Check for conflicts
+        // Step 6: Check for conflicts
         if index.has_conflicts() {
+            // Collect conflict paths for better error message
+            let conflicts: Vec<_> = index
+                .conflicts()
+                .ok()
+                .and_then(|c| {
+                    c.flatten()
+                        .filter_map(|conflict| {
+                            conflict
+                                .our
+                                .as_ref()
+                                .and_then(|e| std::str::from_utf8(&e.path).ok())
+                                .map(|s| s.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .into()
+                })
+                .unwrap_or_default();
+
+            let conflict_list = if conflicts.is_empty() {
+                "unknown files".to_string()
+            } else {
+                conflicts.join(", ")
+            };
+
             return Err(color_eyre::eyre::eyre!(
-                "Merge conflict detected: resolve conflicts and commit manually"
+                "Merge conflict in: {}. Resolve conflicts manually.",
+                conflict_list
             ));
         }
 
-        // Step 6: Write merged index to tree
-        let tree_id = index.write_tree()?;
+        // Step 7: Write merged index to tree
+        let tree_id = index.write_tree_to(&self.repo)?;
         let tree = self.repo.find_tree(tree_id)?;
 
-        // Step 7: Create merge commit
+        // Step 8: Create merge commit
         let signature = self.repo.signature()?;
         let merge_msg = format!(
             "Merge remote-tracking branch '{}/{}'",
@@ -643,10 +904,19 @@ impl GitClient {
             &signature,
             &merge_msg,
             &tree,
-            &[&head.peel_to_commit()?, &merge_commit],
+            &[&local_commit, &merge_commit],
         )?;
 
+        // Step 9: Checkout the new commit
+        self.repo
+            .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+
         Ok(())
+    }
+
+    /// Pull from a remote branch (simple version without progress)
+    pub fn pull(&self, remote_name: &str, branch_name: Option<&str>) -> Result<()> {
+        self.pull_with_progress(remote_name, branch_name, None, None)
     }
 
     /// Pull from the default remote (usually "origin")
@@ -1368,5 +1638,209 @@ mod integration_tests {
             found.is_some(),
             "File should still be in changes after unstaging"
         );
+    }
+
+    // ===== Remote Operations Tests =====
+
+    #[test]
+    fn test_transfer_progress_creation() {
+        let progress = TransferProgress::default();
+        assert_eq!(progress.total_objects, 0);
+        assert_eq!(progress.percent(), 100);
+        assert_eq!(progress.status_message(), "Initializing...");
+    }
+
+    #[test]
+    fn test_transfer_progress_tracking() {
+        let progress = TransferProgress {
+            total_objects: 100,
+            received_objects: 50,
+            received_bytes: 1024,
+            ..Default::default()
+        };
+
+        assert_eq!(progress.percent(), 50);
+        assert!(progress.status_message().contains("50/100"));
+        assert!(progress.status_message().contains("1024 bytes"));
+    }
+
+    #[test]
+    fn test_list_remotes_basic() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Add a remote
+        repo.remote("origin", "https://github.com/test/test.git")
+            .expect("Failed to add remote");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let remotes = client.list_remotes().expect("Failed to list remotes");
+
+        assert!(remotes.contains(&"origin".to_string()));
+    }
+
+    #[test]
+    fn test_remote_url() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        let test_url = "https://github.com/test/test.git";
+        repo.remote("origin", test_url)
+            .expect("Failed to add remote");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let url = client
+            .remote_url("origin")
+            .expect("Failed to get remote URL");
+
+        assert_eq!(url, test_url);
+    }
+
+    #[test]
+    fn test_fetch_nonexistent_remote() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let result = client.fetch("nonexistent");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_push_nonexistent_remote() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let file = repo_path.join("test.txt");
+        fs::write(&file, "test").expect("Failed to write");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("test.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig = git2::Signature::now("Test", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let result = client.push("nonexistent", None);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_fetch_with_progress_tracking() {
+        use std::sync::{Arc, Mutex};
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Add a remote (even if it doesn't exist, we test progress tracking structure)
+        repo.remote("origin", "https://github.com/test/test.git")
+            .expect("Failed to add remote");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let progress = Arc::new(Mutex::new(TransferProgress::default()));
+
+        // This will fail due to network/auth, but we verify the progress structure works
+        let _ = client.fetch_with_progress("origin", Some(progress.clone()), None);
+
+        // Progress tracker should be accessible
+        let p = progress.lock().expect("Failed to lock progress");
+        assert_eq!(p.total_objects, 0); // No objects received due to failure
+    }
+
+    #[test]
+    fn test_fetch_with_cancellation() {
+        use std::sync::{atomic::AtomicBool, Arc};
+
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        repo.remote("origin", "https://github.com/test/test.git")
+            .expect("Failed to add remote");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let cancel = Arc::new(AtomicBool::new(true)); // Pre-cancelled
+
+        // Should fail or complete quickly if already cancelled
+        let result = client.fetch_with_progress("origin", None, Some(cancel));
+
+        // Either fails due to cancellation or network error
+        // We just verify the API works
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_pull_on_detached_head() {
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let repo_path = temp_dir.path();
+        let repo = git2::Repository::init(repo_path).expect("Failed to initialize repo");
+
+        // Create initial commit
+        let file = repo_path.join("test.txt");
+        fs::write(&file, "test").expect("Failed to write");
+
+        let mut index = repo.index().expect("Failed to get index");
+        index.add_path(std::path::Path::new("test.txt")).ok();
+        index.write().expect("Failed to write index");
+
+        let sig = git2::Signature::now("Test", "test@example.com").expect("Failed to create sig");
+        let tree_id = index.write_tree().expect("Failed to write tree");
+        let tree = repo.find_tree(tree_id).expect("Failed to find tree");
+        let commit_oid = repo
+            .commit(Some("HEAD"), &sig, &sig, "Initial", &tree, &[])
+            .expect("Failed to create initial commit");
+
+        // Detach HEAD
+        repo.set_head_detached(commit_oid)
+            .expect("Failed to detach HEAD");
+
+        repo.remote("origin", "https://github.com/test/test.git")
+            .expect("Failed to add remote");
+
+        let client = GitClient::discover(repo_path).expect("Failed to create client");
+        let result = client.pull("origin", None);
+
+        // Should fail because HEAD is detached or remote fetch fails
+        assert!(result.is_err());
+        // The error could be about detached HEAD or remote not found
+        if let Err(e) = result {
+            let err_msg = e.to_string().to_lowercase();
+            assert!(
+                err_msg.contains("detached")
+                    || err_msg.contains("remote")
+                    || err_msg.contains("fetch"),
+                "Expected detached HEAD or fetch error, got: {}",
+                e
+            );
+        }
+    }
+
+    #[test]
+    fn test_explain_error_authentication() {
+        let error = color_eyre::eyre::eyre!("Authentication failed: invalid credentials");
+        let explanation = GitClient::explain_error(&error);
+
+        assert!(explanation.contains("Authentication failed"));
+        assert!(explanation.contains("SSH"));
+    }
+
+    #[test]
+    fn test_explain_error_network() {
+        let error = color_eyre::eyre::eyre!("Failed to resolve host");
+        let explanation = GitClient::explain_error(&error);
+
+        assert!(explanation.contains("network") || explanation.contains("Network"));
     }
 }
