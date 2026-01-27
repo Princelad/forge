@@ -74,10 +74,10 @@
 
 ### Task 3: Testing + Release (2 days)
 
-- [ ] Full test suite (33+ unit + 11 benchmarks)
-- [ ] Real repo remote ops testing
-- [ ] Docs/wiki updates + changelog
-- [ ] Version bump → v0.2.0
+- [x] Full test suite (155 tests) + clippy + 11 benchmarks
+- [ ] Real repo remote ops testing (not run offline; run against staging remote)
+- [x] Docs/wiki updates + changelog
+- [x] Version bump → v0.2.0
 
 ---
 

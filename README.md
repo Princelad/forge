@@ -16,6 +16,7 @@ cargo build --release
 ## Key Features
 
 - 🔀 **Git Integration** — Real-time file status and diff preview
+- 🌐 **Remote Operations** — Fetch, pull, and push with progress + cancellation
 - 📋 **Project Board** — Kanban task tracking (Pending → Current → Completed)
 - 🔗 **Branch Management** — Create, switch, and delete branches
 - 📝 **Commit History** — Browse and inspect commits
