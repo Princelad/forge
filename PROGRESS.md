@@ -1,10 +1,6 @@
 # Progress
 
 - Pending:
-  - [ ] Handle corrupted Git repos
-    - [ ] Add validation on repo open
-    - [ ] Implement recovery options
-    - [ ] Display user-friendly errors
   - [ ] Terminal resize handling
     - [ ] Listen for resize events
     - [ ] Redraw UI on resize
@@ -21,6 +17,10 @@
 - Ongoing: [ ]
 
 - Completed:
+  - [x] Handle corrupted Git repos
+    - [x] Add validation on repo open
+    - [x] Implement recovery options
+    - [x] Display user-friendly errors
   - [x] Upstream tracking display
     - [x] Detect upstream branch
     - [x] Show upstream status (ahead/behind)
