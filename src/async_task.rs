@@ -137,6 +137,11 @@ fn run_git_operation(workdir: &PathBuf, op: &GitOperation) -> OpResult {
         }
     };
 
+    let health = client.check_repo_health();
+    if health.has_blocking_issues() {
+        return Err(health.details());
+    }
+
     match op {
         GitOperation::Fetch(remote) => client
             .fetch(remote)

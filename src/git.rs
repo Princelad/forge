@@ -38,7 +38,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
-use git2::{DiffFormat, DiffOptions, IndexAddOption, Repository, Signature, StatusOptions, Tree};
+use git2::{
+    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StatusOptions, Tree,
+};
 
 use crate::data::{Change, FileStatus};
 
@@ -54,6 +56,118 @@ pub struct TransferProgress {
     pub received_bytes: usize,
     pub total_deltas: usize,
     pub indexed_deltas: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoHealthStatus {
+    Healthy,
+    Warning,
+    Unhealthy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RepoIssue {
+    IndexLocked,
+    IndexCorrupt,
+    MissingHead,
+    MissingObjects,
+    InvalidReferences,
+    PermissionDenied,
+}
+
+impl RepoIssue {
+    fn label(&self) -> &'static str {
+        match self {
+            RepoIssue::IndexLocked => "index lock present",
+            RepoIssue::IndexCorrupt => "index appears corrupt",
+            RepoIssue::MissingHead => "HEAD reference missing",
+            RepoIssue::MissingObjects => "missing git objects",
+            RepoIssue::InvalidReferences => "invalid references",
+            RepoIssue::PermissionDenied => "permission denied accessing .git",
+        }
+    }
+
+    fn is_blocking(&self) -> bool {
+        matches!(
+            self,
+            RepoIssue::IndexLocked
+                | RepoIssue::IndexCorrupt
+                | RepoIssue::MissingObjects
+                | RepoIssue::InvalidReferences
+                | RepoIssue::PermissionDenied
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoHealthReport {
+    pub status: RepoHealthStatus,
+    pub issues: Vec<RepoIssue>,
+    pub recovery_steps: Vec<String>,
+}
+
+impl RepoHealthReport {
+    pub fn is_healthy(&self) -> bool {
+        matches!(self.status, RepoHealthStatus::Healthy)
+    }
+
+    pub fn has_blocking_issues(&self) -> bool {
+        self.issues.iter().any(RepoIssue::is_blocking)
+    }
+
+    pub fn summary(&self) -> String {
+        if self.issues.is_empty() {
+            return "Repository healthy".to_string();
+        }
+
+        let labels: Vec<&str> = self.issues.iter().map(RepoIssue::label).collect();
+        format!("Repository issues detected: {}", labels.join(", "))
+    }
+
+    pub fn details(&self) -> String {
+        if self.issues.is_empty() {
+            return "No issues detected.".to_string();
+        }
+
+        let mut out = String::from("Issues:\n");
+        for issue in &self.issues {
+            out.push_str(&format!("- {}\n", issue.label()));
+        }
+
+        if !self.recovery_steps.is_empty() {
+            out.push_str("\nRecovery options:\n");
+            for step in &self.recovery_steps {
+                out.push_str(&format!("- {}\n", step));
+            }
+        }
+
+        out.trim_end().to_string()
+    }
+
+    pub fn format_description(&self, workdir: &Path) -> String {
+        let base = format!("Git repo at {}", workdir.display());
+        if self.issues.is_empty() {
+            return base;
+        }
+
+        format!("{}\n\n{}", base, self.details())
+    }
+}
+
+fn push_unique_step(steps: &mut Vec<String>, step: &str) {
+    if !steps.iter().any(|existing| existing == step) {
+        steps.push(step.to_string());
+    }
+}
+
+fn is_permission_denied(error: &git2::Error) -> bool {
+    let message = error.message().to_lowercase();
+    message.contains("permission denied") || message.contains("access denied")
+}
+
+fn is_corrupt_error(error: &git2::Error) -> bool {
+    let message = error.message().to_lowercase();
+    message.contains("corrupt") || message.contains("invalid")
 }
 
 impl TransferProgress {
@@ -1058,24 +1172,165 @@ impl GitClient {
     pub fn pull_origin(&self, branch_name: Option<&str>) -> Result<()> {
         self.pull("origin", branch_name)
     }
-    /// Check repository health and return diagnostics
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(true)` if repository is healthy
-    /// - `Ok(false)` if repository has issues (corrupted index, missing objects, etc.)
-    /// - `Err` if unable to determine health
-    ///
-    /// # Errors
-    ///
-    /// - Repository path is invalid
-    /// - Unable to access repository metadata
-    pub fn check_health(&self) -> Result<bool> {
-        // Try to open the index - most reliable corruption indicator
-        match self.repo.index() {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
+    /// Check repository health and return a detailed report.
+    pub fn check_repo_health(&self) -> RepoHealthReport {
+        let mut issues = Vec::new();
+        let mut recovery_steps = Vec::new();
+
+        let git_dir = self.repo.path();
+        let index_lock = git_dir.join("index.lock");
+        if index_lock.exists() {
+            issues.push(RepoIssue::IndexLocked);
+            push_unique_step(
+                &mut recovery_steps,
+                "Wait for other git processes to finish",
+            );
+            push_unique_step(
+                &mut recovery_steps,
+                "If stuck, remove .git/index.lock (only when no git process is running)",
+            );
         }
+
+        match self.repo.index() {
+            Ok(_) => {}
+            Err(e) => match e.code() {
+                ErrorCode::Locked => {
+                    issues.push(RepoIssue::IndexLocked);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "If stuck, remove .git/index.lock (only when no git process is running)",
+                    );
+                }
+                _ => {
+                    if is_permission_denied(&e) {
+                        issues.push(RepoIssue::PermissionDenied);
+                        push_unique_step(
+                            &mut recovery_steps,
+                            "Check permissions: ls -la .git/ and fix ownership if needed",
+                        );
+                    } else {
+                        issues.push(RepoIssue::IndexCorrupt);
+                        if is_corrupt_error(&e) {
+                            push_unique_step(&mut recovery_steps, "Remove index: rm -f .git/index");
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Rebuild index: git reset --mixed",
+                            );
+                        }
+                        push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                    }
+                }
+            },
+        }
+
+        match self.repo.head() {
+            Ok(head) => {
+                if head.target().is_none() {
+                    issues.push(RepoIssue::InvalidReferences);
+                    push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                    push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                } else if let Err(e) = head.peel_to_commit() {
+                    match e.code() {
+                        ErrorCode::NotFound => {
+                            issues.push(RepoIssue::MissingObjects);
+                            push_unique_step(&mut recovery_steps, "Diagnose: git fsck --full");
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Repair: git gc --aggressive --prune=now",
+                            );
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "If issues persist, re-clone the repository",
+                            );
+                        }
+                        ErrorCode::UnbornBranch => {
+                            issues.push(RepoIssue::MissingHead);
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Create initial commit: git commit --allow-empty -m 'init'",
+                            );
+                        }
+                        _ if is_permission_denied(&e) => {
+                            issues.push(RepoIssue::PermissionDenied);
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Check permissions: ls -la .git/ and fix ownership if needed",
+                            );
+                        }
+                        _ => {
+                            issues.push(RepoIssue::InvalidReferences);
+                            push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                            push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                        }
+                    }
+                }
+            }
+            Err(e) => match e.code() {
+                ErrorCode::UnbornBranch => {
+                    issues.push(RepoIssue::MissingHead);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Create initial commit: git commit --allow-empty -m 'init'",
+                    );
+                }
+                ErrorCode::NotFound => {
+                    issues.push(RepoIssue::MissingHead);
+                    push_unique_step(&mut recovery_steps, "Inspect HEAD: cat .git/HEAD");
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Fix HEAD: git symbolic-ref HEAD refs/heads/main",
+                    );
+                }
+                _ if is_permission_denied(&e) => {
+                    issues.push(RepoIssue::PermissionDenied);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Check permissions: ls -la .git/ and fix ownership if needed",
+                    );
+                }
+                _ => {
+                    issues.push(RepoIssue::InvalidReferences);
+                    push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                    push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                }
+            },
+        }
+
+        if let Err(e) = self.repo.references() {
+            if is_permission_denied(&e) {
+                issues.push(RepoIssue::PermissionDenied);
+                push_unique_step(
+                    &mut recovery_steps,
+                    "Check permissions: ls -la .git/ and fix ownership if needed",
+                );
+            } else {
+                issues.push(RepoIssue::InvalidReferences);
+                push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+            }
+        }
+
+        issues.sort();
+        issues.dedup();
+
+        let status = if issues.iter().any(RepoIssue::is_blocking) {
+            RepoHealthStatus::Unhealthy
+        } else if issues.is_empty() {
+            RepoHealthStatus::Healthy
+        } else {
+            RepoHealthStatus::Warning
+        };
+
+        RepoHealthReport {
+            status,
+            issues,
+            recovery_steps,
+        }
+    }
+
+    /// Check repository health and return a coarse boolean status.
+    pub fn check_health(&self) -> Result<bool> {
+        Ok(self.check_repo_health().is_healthy())
     }
 
     /// Get a user-friendly error message from a git2 error

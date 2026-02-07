@@ -88,6 +88,7 @@ pub struct App {
     settings: AppSettings,
     git_client: Option<git::GitClient>,
     git_workdir: Option<PathBuf>,
+    git_health: Option<git::RepoHealthReport>,
     task_manager: TaskManager,
     pending_git_ops: Vec<GitOperation>,
 
@@ -154,6 +155,7 @@ impl App {
             },
             git_client: None,
             git_workdir: None,
+            git_health: None,
             task_manager: TaskManager::new(),
             pending_git_ops: Vec::new(),
             // Page state structs
@@ -178,20 +180,44 @@ impl App {
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| "repository".into());
 
-                let changes = client.list_changes().unwrap_or_default();
+                let health = client.check_repo_health();
+                let description = health.format_description(&workdir);
+
+                let mut status_message = format!("Git: loaded status from {}", workdir.display());
+                let mut last_completion_message = None;
+
+                let changes = if health.has_blocking_issues() {
+                    let msg = error(&health.summary());
+                    status_message = msg.clone();
+                    last_completion_message = Some(msg);
+                    Vec::new()
+                } else {
+                    match client.list_changes() {
+                        Ok(changes) => changes,
+                        Err(e) => {
+                            let msg = error(&git::GitClient::explain_error(&e));
+                            status_message = msg.clone();
+                            last_completion_message = Some(msg);
+                            Vec::new()
+                        }
+                    }
+                };
+
                 let project = data::Project {
                     id: uuid::Uuid::nil(),
                     name: repo_name,
-                    description: format!("Git repo at {}", workdir.display()),
+                    description,
                     branch,
                     changes,
                     modules: Vec::new(),
                     developers: Vec::new(),
                 };
                 app.store.projects = vec![project];
-                app.status_message = format!("Git: loaded status from {}", workdir.display());
+                app.status_message = status_message;
+                app.last_completion_message = last_completion_message;
                 app.git_client = Some(client);
                 app.git_workdir = Some(workdir);
+                app.git_health = Some(health);
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
@@ -261,9 +287,52 @@ impl App {
         }
     }
 
+    fn update_repo_health(&mut self, report: git::RepoHealthReport) {
+        if let Some(workdir) = self.git_workdir.as_ref() {
+            if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
+                project.description = report.format_description(workdir);
+            }
+        }
+        self.git_health = Some(report);
+    }
+
+    fn refresh_repo_health(&mut self) -> Option<git::RepoHealthReport> {
+        let report = self
+            .git_client
+            .as_ref()
+            .map(|client| client.check_repo_health());
+        if let Some(ref report) = report {
+            self.update_repo_health(report.clone());
+        }
+        report
+    }
+
+    fn ensure_repo_ready(&mut self) -> bool {
+        if let Some(report) = self.refresh_repo_health() {
+            if report.has_blocking_issues() {
+                let msg = error(&report.summary());
+                self.status_message = msg.clone();
+                self.last_completion_message = Some(msg);
+                return false;
+            }
+        }
+        true
+    }
+
+    fn report_git_error(&mut self, context: &str, e: &color_eyre::eyre::Report) {
+        let detail = git::GitClient::explain_error(e);
+        let msg = error(&format!("{}: {}", context, detail));
+        self.status_message = msg.clone();
+        self.last_completion_message = Some(msg);
+    }
+
     fn enqueue_git_operation(&mut self, op: GitOperation) {
         if self.git_workdir.is_none() || self.git_client.is_none() {
             self.status_message = error("No Git repository");
+            return;
+        }
+
+        if !self.ensure_repo_ready() {
             return;
         }
 
@@ -974,7 +1043,10 @@ impl App {
     }
 
     fn perform_commit(&mut self) {
-        let msg = self.changes.commit_message.trim();
+        let msg = self.changes.commit_message.trim().to_string();
+        if !self.ensure_repo_ready() {
+            return;
+        }
         if let Some(client) = &self.git_client {
             // Check if any files are staged
             let has_staged = self
@@ -989,7 +1061,7 @@ impl App {
                 return;
             }
 
-            match client.commit_all(msg) {
+            match client.commit_all(&msg) {
                 Ok(_oid) => {
                     // Refresh changes and bump progress
                     if let Ok(changes) = client.list_changes() {
@@ -1008,17 +1080,22 @@ impl App {
                     }
                 }
                 Err(e) => {
-                    self.status_message = error(&format!("Commit failed: {}", e));
+                    self.report_git_error("Commit failed", &e);
                 }
             }
         }
     }
 
     fn refresh_view_cache(&mut self) {
-        if let Some(client) = &self.git_client {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let mut error: Option<(String, color_eyre::eyre::Report)> = None;
+
+        if let Some(client) = self.git_client.as_ref() {
             match self.current_view {
-                AppMode::BranchManager => {
-                    if let Ok(branches) = client.list_branches_with_upstream(true, true) {
+                AppMode::BranchManager => match client.list_branches_with_upstream(true, true) {
+                    Ok(branches) => {
                         let branch_infos: Vec<BranchInfo> = branches
                             .into_iter()
                             .map(|(name, is_current, is_remote, upstream)| {
@@ -1044,9 +1121,12 @@ impl App {
                             .collect();
                         self.branch_manager.update_branches(branch_infos);
                     }
-                }
-                AppMode::CommitHistory => {
-                    if let Ok(commits) = client.get_commit_history(50) {
+                    Err(e) => {
+                        error = Some(("Failed to list branches".to_string(), e));
+                    }
+                },
+                AppMode::CommitHistory => match client.get_commit_history(50) {
+                    Ok(commits) => {
                         let commit_infos: Vec<CommitInfo> = commits
                             .into_iter()
                             .map(|(hash, author, date, message, files)| CommitInfo {
@@ -1059,24 +1139,39 @@ impl App {
                             .collect();
                         self.commit_history.update_commits(commit_infos);
                     }
-                }
+                    Err(e) => {
+                        error = Some(("Failed to load commit history".to_string(), e));
+                    }
+                },
                 AppMode::Changes => {
                     // Refresh changes when entering the view
-                    if let Ok(changes) = client.list_changes() {
-                        if let Some(project) =
-                            self.store.projects.get_mut(self.dashboard.selected_index)
-                        {
-                            project.changes = changes;
-                            project.branch = client.head_branch().unwrap_or_default();
+                    match client.list_changes() {
+                        Ok(changes) => {
+                            if let Some(project) =
+                                self.store.projects.get_mut(self.dashboard.selected_index)
+                            {
+                                project.changes = changes;
+                                project.branch = client.head_branch().unwrap_or_default();
+                            }
+                        }
+                        Err(e) => {
+                            error = Some(("Failed to list changes".to_string(), e));
                         }
                     }
                 }
                 _ => {}
             }
         }
+
+        if let Some((context, err)) = error {
+            self.report_git_error(&context, &err);
+        }
     }
 
     fn perform_branch_switch(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_info = self
             .branch_manager
             .selected_branch()
@@ -1102,7 +1197,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        self.status_message = error(&format!("Failed to switch branch: {}", e));
+                        self.report_git_error("Failed to switch branch", &e);
                     }
                 }
             }
@@ -1110,6 +1205,9 @@ impl App {
     }
 
     fn perform_branch_create(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_name = self.branch_manager.get_input_value();
         if let Some(client) = &self.git_client {
             match client.create_branch(branch_name) {
@@ -1120,13 +1218,16 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = error(&format!("Failed to create branch: {}", e));
+                    self.report_git_error("Failed to create branch", &e);
                 }
             }
         }
     }
 
     fn perform_branch_delete(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_info = self
             .branch_manager
             .selected_branch()
@@ -1146,7 +1247,7 @@ impl App {
                         self.refresh_view_cache();
                     }
                     Err(e) => {
-                        self.status_message = error(&format!("Failed to delete branch: {}", e));
+                        self.report_git_error("Failed to delete branch", &e);
                     }
                 }
             }
@@ -1268,6 +1369,9 @@ impl App {
     }
 
     fn toggle_file_staging(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
             if let Some(change) = project.changes.get(self.changes.selected_index) {
                 let path = change.path.clone();
@@ -1283,22 +1387,23 @@ impl App {
                     match result {
                         Ok(()) => {
                             // Refresh changes to update staging status
-                            if let Ok(changes) = client.list_changes() {
-                                project.changes = changes;
-                                self.status_message = if is_staged {
-                                    success(&format!("Unstaged: {}", path))
-                                } else {
-                                    success(&format!("Staged: {}", path))
-                                };
+                            match client.list_changes() {
+                                Ok(changes) => {
+                                    project.changes = changes;
+                                    self.status_message = if is_staged {
+                                        success(&format!("Unstaged: {}", path))
+                                    } else {
+                                        success(&format!("Staged: {}", path))
+                                    };
+                                }
+                                Err(e) => {
+                                    self.report_git_error("Failed to refresh changes", &e);
+                                }
                             }
                         }
                         Err(e) => {
-                            self.status_message = error(&format!(
-                                "Failed to {} {}: {}",
-                                if is_staged { "unstage" } else { "stage" },
-                                path,
-                                e
-                            ));
+                            let action = if is_staged { "Unstage" } else { "Stage" };
+                            self.report_git_error(&format!("{} failed", action), &e);
                         }
                     }
                 }
