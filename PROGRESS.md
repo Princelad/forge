@@ -1,10 +1,6 @@
 # Progress
 
 - Pending:
-  - [ ] Terminal resize handling
-    - [x] Listen for resize events
-    - [x] Redraw UI on resize
-    - [ ] Test with various terminal sizes
   - [ ] Large repo performance optimization
     - [ ] Profile hot paths
     - [ ] Optimize git operations
@@ -17,6 +13,10 @@
 - Ongoing: [ ]
 
 - Completed:
+  - [x] Terminal resize handling
+    - [x] Listen for resize events
+    - [x] Redraw UI on resize
+    - [x] Test with various terminal sizes
   - [x] Handle corrupted Git repos
     - [x] Add validation on repo open
     - [x] Implement recovery options
