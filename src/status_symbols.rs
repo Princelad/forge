@@ -19,7 +19,19 @@ pub fn success(msg: &str) -> String {
 
 /// Helper function to format error messages
 pub fn error(msg: &str) -> String {
-    format!("{} {}", ERROR, msg)
+    let trimmed = msg.trim();
+    let normalized = if trimmed.is_empty() {
+        "Unknown error"
+    } else {
+        trimmed
+    };
+    let with_prefix = if normalized.to_lowercase().starts_with("error:") {
+        normalized.to_string()
+    } else {
+        format!("Error: {}", normalized)
+    };
+
+    format!("{} {}", ERROR, with_prefix)
 }
 
 /// Helper function to format progress messages

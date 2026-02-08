@@ -2,7 +2,7 @@
 
 - Pending:
   - [ ] Error message improvements
-    - [ ] Standardize error formatting
+    - [x] Standardize error formatting
     - [ ] Add context to messages
     - [ ] Test user comprehension
 
