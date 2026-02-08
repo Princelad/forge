@@ -2,8 +2,8 @@
 
 - Pending:
   - [ ] Terminal resize handling
-    - [ ] Listen for resize events
-    - [ ] Redraw UI on resize
+    - [x] Listen for resize events
+    - [x] Redraw UI on resize
     - [ ] Test with various terminal sizes
   - [ ] Large repo performance optimization
     - [ ] Profile hot paths

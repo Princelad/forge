@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crossterm::terminal;
 use ratatui::{DefaultTerminal, Frame};
 
 pub mod async_task;
@@ -25,7 +26,7 @@ use state::{
 use status_symbols::{error, progress, success};
 
 // UI constants
-const WINDOW_SIZE: usize = 10;
+const DEFAULT_WINDOW_SIZE: usize = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -101,6 +102,7 @@ pub struct App {
     show_help: bool,
     search_active: bool,
     search_buffer: String,
+    window_size: usize,
 
     // ====================================================================
     // Page State (extracted into dedicated structs)
@@ -148,6 +150,7 @@ impl App {
             show_help: false,
             search_active: false,
             search_buffer: String::new(),
+            window_size: DEFAULT_WINDOW_SIZE,
             settings: AppSettings {
                 theme: Theme::Default,
                 notifications: true,
@@ -241,10 +244,13 @@ impl App {
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.running = true;
+        self.handle_terminal_resize();
         while self.running {
             terminal.draw(|frame| self.render(frame))?;
             let action = self.key_handler.handle_crossterm_events()?;
-            if self.handle_action(action) {
+            if matches!(action, KeyAction::TerminalResized) {
+                self.handle_terminal_resize();
+            } else if self.handle_action(action) {
                 self.quit();
             }
 
@@ -365,6 +371,140 @@ impl App {
         }
 
         self.status_message.clone()
+    }
+
+    fn handle_terminal_resize(&mut self) {
+        let window_size = terminal::size()
+            .map(|(_, rows)| Self::window_size_from_rows(rows))
+            .unwrap_or(DEFAULT_WINDOW_SIZE);
+        if window_size != self.window_size {
+            self.window_size = window_size;
+            self.reflow_scroll_for_window();
+        }
+    }
+
+    fn window_size_from_rows(rows: u16) -> usize {
+        // Reserve rows for borders, menu header, and status bar.
+        let usable_rows = rows.saturating_sub(6);
+        usize::from(usable_rows.max(1))
+    }
+
+    fn reflow_scroll_for_window(&mut self) {
+        let window_size = self.window_size.max(1);
+
+        let project_count = self.store.projects.len();
+        self.dashboard.selected_index = self
+            .dashboard
+            .selected_index
+            .min(project_count.saturating_sub(1));
+        self.dashboard.scroll = self
+            .dashboard
+            .scroll
+            .min(project_count.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.dashboard.selected_index,
+            &mut self.dashboard.scroll,
+            window_size,
+        );
+
+        let (changes_len, modules_len, developers_len) = self
+            .store
+            .projects
+            .get(self.dashboard.selected_index)
+            .map(|project| {
+                (
+                    project.changes.len(),
+                    project.modules.len(),
+                    project.developers.len(),
+                )
+            })
+            .unwrap_or((0, 0, 0));
+
+        self.changes.selected_index = self
+            .changes
+            .selected_index
+            .min(changes_len.saturating_sub(1));
+        self.changes.scroll = self
+            .changes
+            .scroll
+            .min(changes_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.changes.selected_index,
+            &mut self.changes.scroll,
+            window_size,
+        );
+
+        self.merge.selected_file_index = self
+            .merge
+            .selected_file_index
+            .min(changes_len.saturating_sub(1));
+        self.merge.scroll = self
+            .merge
+            .scroll
+            .min(changes_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.merge.selected_file_index,
+            &mut self.merge.scroll,
+            window_size,
+        );
+
+        let commit_len = self.commit_history.cached_commits.len();
+        self.commit_history.selected_index = self
+            .commit_history
+            .selected_index
+            .min(commit_len.saturating_sub(1));
+        self.commit_history.scroll = self
+            .commit_history
+            .scroll
+            .min(commit_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.commit_history.selected_index,
+            &mut self.commit_history.scroll,
+            window_size,
+        );
+
+        let branch_len = self.branch_manager.cached_branches.len();
+        self.branch_manager.selected_index = self
+            .branch_manager
+            .selected_index
+            .min(branch_len.saturating_sub(1));
+        self.branch_manager.scroll = self
+            .branch_manager
+            .scroll
+            .min(branch_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.branch_manager.selected_index,
+            &mut self.branch_manager.scroll,
+            window_size,
+        );
+
+        self.module_manager.selected_module = self
+            .module_manager
+            .selected_module
+            .min(modules_len.saturating_sub(1));
+        self.module_manager.module_scroll = self
+            .module_manager
+            .module_scroll
+            .min(modules_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.module_manager.selected_module,
+            &mut self.module_manager.module_scroll,
+            window_size,
+        );
+
+        self.module_manager.selected_developer = self
+            .module_manager
+            .selected_developer
+            .min(developers_len.saturating_sub(1));
+        self.module_manager.developer_scroll = self
+            .module_manager
+            .developer_scroll
+            .min(developers_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.module_manager.selected_developer,
+            &mut self.module_manager.developer_scroll,
+            window_size,
+        );
     }
 
     fn render(&mut self, frame: &mut Frame) {
@@ -582,6 +722,7 @@ impl App {
     }
 
     fn apply_action_updates(&mut self, update: ActionStateUpdate) {
+        let window_size = self.window_size.max(1);
         // Apply all optional state updates
         if let Some(focus) = update.focus {
             self.focus = focus;
@@ -637,12 +778,12 @@ impl App {
             // Auto-scroll to keep selection visible
             if self.commit_history.selected_index < self.commit_history.scroll {
                 self.commit_history.scroll = self.commit_history.selected_index;
-            } else if self.commit_history.selected_index >= self.commit_history.scroll + WINDOW_SIZE
+            } else if self.commit_history.selected_index >= self.commit_history.scroll + window_size
             {
                 self.commit_history.scroll = self
                     .commit_history
                     .selected_index
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(idx) = update.selected_branch_index {
@@ -651,12 +792,12 @@ impl App {
             // Auto-scroll to keep selection visible
             if self.branch_manager.selected_index < self.branch_manager.scroll {
                 self.branch_manager.scroll = self.branch_manager.selected_index;
-            } else if self.branch_manager.selected_index >= self.branch_manager.scroll + WINDOW_SIZE
+            } else if self.branch_manager.selected_index >= self.branch_manager.scroll + window_size
             {
                 self.branch_manager.scroll = self
                     .branch_manager
                     .selected_index
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(idx) = update.selected_module_index {
@@ -671,12 +812,12 @@ impl App {
             if self.module_manager.selected_module < self.module_manager.module_scroll {
                 self.module_manager.module_scroll = self.module_manager.selected_module;
             } else if self.module_manager.selected_module
-                >= self.module_manager.module_scroll + WINDOW_SIZE
+                >= self.module_manager.module_scroll + window_size
             {
                 self.module_manager.module_scroll = self
                     .module_manager
                     .selected_module
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(idx) = update.selected_developer_index {
@@ -691,12 +832,12 @@ impl App {
             if self.module_manager.selected_developer < self.module_manager.developer_scroll {
                 self.module_manager.developer_scroll = self.module_manager.selected_developer;
             } else if self.module_manager.selected_developer
-                >= self.module_manager.developer_scroll + WINDOW_SIZE
+                >= self.module_manager.developer_scroll + window_size
             {
                 self.module_manager.developer_scroll = self
                     .module_manager
                     .selected_developer
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(c) = update.commit_message_append {
@@ -713,7 +854,7 @@ impl App {
         }
         if let Some(amount) = update.project_scroll_down {
             let max = self.store.projects.len();
-            self.dashboard.scroll_down(amount, max, WINDOW_SIZE);
+            self.dashboard.scroll_down(amount, max, window_size);
         }
         if let Some(amount) = update.changes_scroll_up {
             self.changes.scroll_up(amount);
@@ -725,7 +866,7 @@ impl App {
                 .get(self.dashboard.selected_index)
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
-            self.changes.scroll_down(amount, max, WINDOW_SIZE);
+            self.changes.scroll_down(amount, max, window_size);
         }
         if let Some(ratio) = update.changes_pane_ratio {
             self.changes.changes_pane_ratio = ratio;
@@ -765,7 +906,7 @@ impl App {
                 .get(self.dashboard.selected_index)
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
-            self.merge.scroll_down(amount, max, WINDOW_SIZE);
+            self.merge.scroll_down(amount, max, window_size);
         }
 
         // Complex navigation handlers
