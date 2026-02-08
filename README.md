@@ -18,13 +18,13 @@ cargo build --release
 ## Key Features
 
 - 🔀 **Git Integration** — Real-time file status and diff preview
-- 🌐 **Remote Operations** — Fetch, pull, and push with progress + cancellation
+- 🌐 **Remote Operations** — Pull with progress + cancellation (fetch/push wiring in progress)
 - 📋 **Project Board** — Kanban task tracking (Pending → Current → Completed)
 - 🔗 **Branch Management** — Create, switch, and delete branches
 - 📝 **Commit History** — Browse and inspect commits
 - 👥 **Team Management** — Track modules and developers
-- 🔀 **Merge Visualization** — Side-by-side conflict resolution
-- ⚙️ **Customizable** — Theme switching and settings
+- 🔀 **Merge Visualization** — Side-by-side local/incoming previews with accept markers
+- ⚙️ **Customizable** — Theme switching (notifications/autosync placeholders)
 - ⌨️ **Keyboard-Driven** — Fully navigable without mouse
 
 ## Documentation
@@ -69,7 +69,8 @@ cd /path/to/your/repo
 2. **Stage files** with Space
 3. **Commit** with Enter
 4. **View help** with `?`
-5. **Quit** with Ctrl+C
+5. **Pull** with Ctrl+L (Changes view)
+6. **Quit** with Ctrl+C
 
 See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 

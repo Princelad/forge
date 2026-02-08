@@ -33,8 +33,8 @@ The Development wiki covers:
    ```
 5. **Run tests** to ensure everything works:
    ```bash
-   cargo test --lib
-   cargo clippy
+   cargo test
+   cargo clippy -- -W clippy::pedantic
    cargo fmt --check
    ```
 
@@ -55,7 +55,7 @@ The Development wiki covers:
 3. **Test your changes**:
 
    ```bash
-   cargo test --lib
+   cargo test
    cargo build --release
    ```
 
@@ -86,9 +86,9 @@ The Development wiki covers:
 
 Before submitting a pull request:
 
-- ✅ **Run `cargo clippy`** and fix all warnings
+- ✅ **Run `cargo clippy -- -W clippy::pedantic`** and fix all warnings
 - ✅ **Run `cargo fmt`** to format code
-- ✅ **Run `cargo test --lib`** and ensure all tests pass
+- ✅ **Run `cargo test`** and ensure all tests pass
 - ✅ **Add tests** for new functionality
 - ✅ **Update documentation** if needed (README, wiki, doc comments)
 

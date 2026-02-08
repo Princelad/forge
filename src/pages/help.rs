@@ -88,7 +88,7 @@ impl HelpPage {
             ]),
             Line::from(vec![
                 Span::styled("Merge", Style::new().bold().yellow()),
-                Span::raw("       Resolve merge conflicts"),
+                Span::raw("       Review local/incoming previews"),
             ]),
             Line::from(vec![
                 Span::styled("Settings", Style::new().bold().yellow()),
@@ -119,12 +119,8 @@ impl HelpPage {
             Line::from(vec![
                 Span::styled("Remote", Style::new().bold().magenta()),
                 Span::raw("      "),
-                Span::styled("f", Style::new().bold()),
-                Span::raw(": Fetch,  "),
-                Span::styled("p", Style::new().bold()),
-                Span::raw(": Push,  "),
                 Span::styled("Ctrl+l", Style::new().bold()),
-                Span::raw(": Pull"),
+                Span::raw(": Pull (Changes view)"),
             ]),
             Line::from(vec![
                 Span::styled("Branches", Style::new().bold().magenta()),
