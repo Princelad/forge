@@ -27,6 +27,7 @@ use status_symbols::{error, progress, success};
 
 // UI constants
 const DEFAULT_WINDOW_SIZE: usize = 10;
+const DIFF_PREVIEW_PLACEHOLDER: &str = "(diff not loaded)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -195,7 +196,7 @@ impl App {
                     last_completion_message = Some(msg);
                     Vec::new()
                 } else {
-                    match client.list_changes() {
+                    match client.list_changes_summary() {
                         Ok(changes) => changes,
                         Err(e) => {
                             let msg = error(&git::GitClient::explain_error(&e));
@@ -221,6 +222,7 @@ impl App {
                 app.git_client = Some(client);
                 app.git_workdir = Some(workdir);
                 app.git_health = Some(health);
+                app.ensure_change_preview_loaded(app.changes.selected_index);
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
@@ -311,6 +313,82 @@ impl App {
             self.update_repo_health(report.clone());
         }
         report
+    }
+
+    fn ensure_change_preview_loaded(&mut self, index: usize) {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return,
+        };
+
+        let path = self
+            .store
+            .projects
+            .get(self.dashboard.selected_index)
+            .and_then(|project| project.changes.get(index))
+            .and_then(|change| {
+                if change.diff_preview == DIFF_PREVIEW_PLACEHOLDER {
+                    Some(change.path.clone())
+                } else {
+                    None
+                }
+            });
+
+        let Some(path) = path else {
+            return;
+        };
+
+        let (diff_preview, local_preview, incoming_preview) = client.get_change_previews(&path);
+
+        if let Some(change) = self
+            .store
+            .projects
+            .get_mut(self.dashboard.selected_index)
+            .and_then(|project| project.changes.get_mut(index))
+        {
+            change.diff_preview = diff_preview;
+            change.local_preview = local_preview;
+            change.incoming_preview = incoming_preview;
+        }
+    }
+
+    fn ensure_selected_commit_files_loaded(&mut self) {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return,
+        };
+
+        let commit_hash = self
+            .commit_history
+            .cached_commits
+            .get(self.commit_history.selected_index)
+            .and_then(|commit| {
+                if commit.files_loaded {
+                    None
+                } else {
+                    Some(commit.hash.clone())
+                }
+            });
+
+        let Some(commit_hash) = commit_hash else {
+            return;
+        };
+
+        match client.get_commit_files_changed(&commit_hash) {
+            Ok(files) => {
+                if let Some(commit) = self
+                    .commit_history
+                    .cached_commits
+                    .get_mut(self.commit_history.selected_index)
+                {
+                    commit.files_changed = files;
+                    commit.files_loaded = true;
+                }
+            }
+            Err(e) => {
+                self.report_git_error("Failed to load commit files", &e);
+            }
+        }
     }
 
     fn ensure_repo_ready(&mut self) -> bool {
@@ -758,6 +836,7 @@ impl App {
         }
         if let Some(idx) = update.selected_change_index {
             self.changes.selected_index = idx;
+            self.ensure_change_preview_loaded(self.changes.selected_index);
         }
         if let Some(idx) = update.selected_board_column {
             self.board.selected_column = idx;
@@ -767,6 +846,7 @@ impl App {
         }
         if let Some(idx) = update.selected_merge_file_index {
             self.merge.selected_file_index = idx;
+            self.ensure_change_preview_loaded(self.merge.selected_file_index);
         }
         if let Some(idx) = update.selected_setting_index {
             self.selected_setting_index = idx;
@@ -785,6 +865,7 @@ impl App {
                     .selected_index
                     .saturating_sub(window_size - 1);
             }
+            self.ensure_selected_commit_files_loaded();
         }
         if let Some(idx) = update.selected_branch_index {
             self.branch_manager.selected_index =
@@ -962,6 +1043,7 @@ impl App {
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
             self.merge.navigate_down(max);
+            self.ensure_change_preview_loaded(self.merge.selected_file_index);
         }
         if update.navigate_settings_down.is_some() {
             let max = self.settings_options().len().saturating_sub(1);
@@ -1205,11 +1287,12 @@ impl App {
             match client.commit_all(&msg) {
                 Ok(_oid) => {
                     // Refresh changes and bump progress
-                    if let Ok(changes) = client.list_changes() {
+                    if let Ok(changes) = client.list_changes_summary() {
                         if let Some(project) =
                             self.store.projects.get_mut(self.dashboard.selected_index)
                         {
                             project.changes = changes;
+                            self.ensure_change_preview_loaded(self.changes.selected_index);
                         }
                     }
                     self.store
@@ -1266,7 +1349,7 @@ impl App {
                         error = Some(("Failed to list branches".to_string(), e));
                     }
                 },
-                AppMode::CommitHistory => match client.get_commit_history(50) {
+                AppMode::CommitHistory => match client.get_commit_history_summary(50) {
                     Ok(commits) => {
                         let commit_infos: Vec<CommitInfo> = commits
                             .into_iter()
@@ -1276,9 +1359,11 @@ impl App {
                                 date,
                                 message,
                                 files_changed: files,
+                                files_loaded: false,
                             })
                             .collect();
                         self.commit_history.update_commits(commit_infos);
+                        self.ensure_selected_commit_files_loaded();
                     }
                     Err(e) => {
                         error = Some(("Failed to load commit history".to_string(), e));
@@ -1286,7 +1371,7 @@ impl App {
                 },
                 AppMode::Changes => {
                     // Refresh changes when entering the view
-                    match client.list_changes() {
+                    match client.list_changes_summary() {
                         Ok(changes) => {
                             if let Some(project) =
                                 self.store.projects.get_mut(self.dashboard.selected_index)
@@ -1294,6 +1379,7 @@ impl App {
                                 project.changes = changes;
                                 project.branch = client.head_branch().unwrap_or_default();
                             }
+                            self.ensure_change_preview_loaded(self.changes.selected_index);
                         }
                         Err(e) => {
                             error = Some(("Failed to list changes".to_string(), e));
@@ -1528,9 +1614,10 @@ impl App {
                     match result {
                         Ok(()) => {
                             // Refresh changes to update staging status
-                            match client.list_changes() {
+                            match client.list_changes_summary() {
                                 Ok(changes) => {
                                     project.changes = changes;
+                                    self.ensure_change_preview_loaded(self.changes.selected_index);
                                     self.status_message = if is_staged {
                                         success(&format!("Unstaged: {}", path))
                                     } else {

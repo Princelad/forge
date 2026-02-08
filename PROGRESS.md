@@ -1,10 +1,6 @@
 # Progress
 
 - Pending:
-  - [ ] Large repo performance optimization
-    - [ ] Profile hot paths
-    - [ ] Optimize git operations
-    - [ ] Cache expensive computations
   - [ ] Error message improvements
     - [ ] Standardize error formatting
     - [ ] Add context to messages
@@ -13,6 +9,10 @@
 - Ongoing: [ ]
 
 - Completed:
+  - [x] Large repo performance optimization
+    - [x] Profile hot paths
+    - [x] Optimize git operations
+    - [x] Cache expensive computations
   - [x] Terminal resize handling
     - [x] Listen for resize events
     - [x] Redraw UI on resize

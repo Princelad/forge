@@ -315,6 +315,69 @@ impl GitClient {
         Ok(changes)
     }
 
+    /// List changes without computing diff previews.
+    ///
+    /// This is significantly faster in large repositories and allows callers
+    /// to lazily load previews for selected items.
+    pub fn list_changes_summary(&self) -> Result<Vec<Change>> {
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true)
+            .recurse_untracked_dirs(true)
+            .include_ignored(false);
+
+        let statuses = self.repo.statuses(Some(&mut opts))?;
+        let mut changes = Vec::new();
+
+        for entry in statuses.iter() {
+            let path = match entry.path() {
+                Some(p) => p.to_string(),
+                None => continue,
+            };
+
+            let status = entry.status();
+            // Map git status to our simplified FileStatus
+            let file_status = if status.is_wt_new() || status.is_index_new() {
+                FileStatus::Added
+            } else if status.is_wt_deleted() || status.is_index_deleted() {
+                FileStatus::Deleted
+            } else {
+                FileStatus::Modified
+            };
+
+            let staged = status.is_index_new()
+                || status.is_index_modified()
+                || status.is_index_deleted()
+                || status.is_index_renamed()
+                || status.is_index_typechange();
+
+            changes.push(Change {
+                path,
+                status: file_status,
+                diff_preview: "(diff not loaded)".into(),
+                local_preview: None,
+                incoming_preview: None,
+                staged,
+            });
+        }
+
+        Ok(changes)
+    }
+
+    /// Compute diff previews for a single path.
+    pub fn get_change_previews(&self, path: &str) -> (String, Option<String>, Option<String>) {
+        let local_preview = self
+            .diff_index_to_workdir_for_path(path)
+            .or_else(|| self.diff_for_path(path));
+        let incoming_preview = self.diff_head_to_index_for_path(path);
+        let diff_preview = local_preview
+            .as_ref()
+            .or(incoming_preview.as_ref())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "(no diff)".into());
+
+        (diff_preview, local_preview, incoming_preview)
+    }
+
     fn diff_for_path(&self, path: &str) -> Option<String> {
         let mut opts = DiffOptions::new();
         opts.pathspec(path);
@@ -749,6 +812,59 @@ impl GitClient {
         }
 
         Ok(commits)
+    }
+
+    /// Get commit history without computing per-commit file lists.
+    pub fn get_commit_history_summary(&self, limit: usize) -> Result<Vec<CommitData>> {
+        let mut commits = Vec::new();
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push_head()?;
+
+        for oid in revwalk.take(limit).flatten() {
+            if let Ok(commit) = self.repo.find_commit(oid) {
+                let hash = oid.to_string();
+                let author = commit.author().name().unwrap_or("Unknown").to_string();
+                let time = commit.time();
+                let date = chrono::DateTime::from_timestamp(time.seconds(), 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "Unknown date".to_string());
+                let message = commit.message().unwrap_or("").to_string();
+                commits.push((hash, author, date, message, Vec::new()));
+            }
+        }
+
+        Ok(commits)
+    }
+
+    /// Get the list of files changed for a specific commit hash.
+    pub fn get_commit_files_changed(&self, commit_hash: &str) -> Result<Vec<String>> {
+        let oid = git2::Oid::from_str(commit_hash)
+            .map_err(|_| color_eyre::eyre::eyre!("Invalid commit hash"))?;
+        let commit = self.repo.find_commit(oid)?;
+
+        let mut files = Vec::new();
+        if let Ok(tree) = commit.tree() {
+            let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+            if let Ok(diff) = self
+                .repo
+                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+            {
+                diff.foreach(
+                    &mut |delta, _| {
+                        if let Some(path) = delta.new_file().path() {
+                            files.push(path.to_string_lossy().to_string());
+                        }
+                        true
+                    },
+                    None,
+                    None,
+                    None,
+                )
+                .ok();
+            }
+        }
+
+        Ok(files)
     }
 
     /// Fetch from a remote repository with progress tracking

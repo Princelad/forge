@@ -114,6 +114,7 @@ mod tests {
                 date: "2026-01-27".to_string(),
                 message: "Initial commit".to_string(),
                 files_changed: vec!["file1.rs".to_string(), "file2.rs".to_string()],
+                files_loaded: true,
             },
             CommitInfo {
                 hash: "def456".to_string(),
@@ -121,6 +122,7 @@ mod tests {
                 date: "2026-01-26".to_string(),
                 message: "Add feature".to_string(),
                 files_changed: vec!["src/main.rs".to_string()],
+                files_loaded: true,
             },
             CommitInfo {
                 hash: "ghi789".to_string(),
@@ -128,6 +130,7 @@ mod tests {
                 date: "2026-01-25".to_string(),
                 message: "Fix bug".to_string(),
                 files_changed: vec!["src/lib.rs".to_string()],
+                files_loaded: true,
             },
         ]
     }
@@ -210,6 +213,7 @@ mod tests {
                 date: "2026-01-27".to_string(),
                 message: format!("Commit {}", i),
                 files_changed: vec![format!("file{}.rs", i)],
+                files_loaded: true,
             })
             .collect();
         
@@ -227,6 +231,7 @@ mod tests {
                 date: "2026-01-27".to_string(),
                 message: format!("Commit {}", i),
                 files_changed: vec![format!("file{}.rs", i)],
+                files_loaded: true,
             })
             .collect();
         state.scroll = 3;
