@@ -276,7 +276,8 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    let msg = error(&e.to_string());
+                    let label = Self::describe_git_operation(&result.op);
+                    let msg = error(&format!("{} failed: {}", label, e));
                     self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
                     self.status_message = msg;
@@ -1502,7 +1503,7 @@ impl App {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = error("Failed to create module");
+            self.status_message = error(&format!("Failed to create module '{}'", module_name));
         }
     }
 
@@ -1520,7 +1521,7 @@ impl App {
                     let _ = self.store.save_to_json(wd);
                 }
             } else {
-                self.status_message = error("Failed to update module");
+                self.status_message = error(&format!("Failed to update module '{}'", module_name));
             }
         }
     }
@@ -1544,7 +1545,8 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = error("Failed to delete module");
+                    self.status_message =
+                        error(&format!("Failed to delete module '{}'", module_name));
                 }
             }
         }
@@ -1562,7 +1564,8 @@ impl App {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = error("Failed to create developer");
+            self.status_message =
+                error(&format!("Failed to create developer '{}'", developer_name));
         }
     }
 
@@ -1589,7 +1592,8 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = error("Failed to delete developer");
+                    self.status_message =
+                        error(&format!("Failed to delete developer '{}'", developer_name));
                 }
             }
         }
@@ -1631,7 +1635,7 @@ impl App {
                         }
                         Err(e) => {
                             let action = if is_staged { "Unstage" } else { "Stage" };
-                            self.report_git_error(&format!("{} failed", action), &e);
+                            self.report_git_error(&format!("{} failed for {}", action, path), &e);
                         }
                     }
                 }
@@ -1655,6 +1659,7 @@ impl App {
         if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
             if let Some(module) = project.modules.get(self.module_manager.selected_module) {
                 let module_id = module.id;
+                let module_name = module.name.clone();
                 if let Some(developer) = project
                     .developers
                     .get(self.module_manager.selected_developer)
@@ -1666,14 +1671,19 @@ impl App {
                         module_id,
                         Some(developer_id),
                     ) {
-                        self.status_message =
-                            success(&format!("Assigned {} to module", developer_name));
+                        self.status_message = success(&format!(
+                            "Assigned {} to module {}",
+                            developer_name, module_name
+                        ));
                         self.module_manager.assign_mode = false;
                         if let Some(wd) = self.git_workdir.as_ref() {
                             let _ = self.store.save_to_json(wd);
                         }
                     } else {
-                        self.status_message = error("Failed to assign developer");
+                        self.status_message = error(&format!(
+                            "Failed to assign {} to module {}",
+                            developer_name, module_name
+                        ));
                     }
                 }
             }

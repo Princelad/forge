@@ -1,14 +1,14 @@
 # Progress
 
 - Pending:
-  - [ ] Error message improvements
-    - [ ] Standardize error formatting
-    - [ ] Add context to messages
-    - [ ] Test user comprehension
 
-- Ongoing: [ ]
+- Ongoing:
 
 - Completed:
+  - [x] Error message improvements
+    - [x] Standardize error formatting
+    - [x] Add context to messages
+    - [x] Test user comprehension
   - [x] Large repo performance optimization
     - [x] Profile hot paths
     - [x] Optimize git operations
