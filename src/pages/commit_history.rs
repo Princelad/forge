@@ -24,6 +24,7 @@ pub struct CommitInfo {
     pub date: String,
     pub message: String,
     pub files_changed: Vec<String>,
+    pub files_loaded: bool,
 }
 
 #[derive(Debug)]
@@ -148,7 +149,12 @@ impl CommitHistory {
         )));
 
         // Add files changed
-        if commit.files_changed.is_empty() {
+        if !commit.files_loaded {
+            lines.push(Line::from(Span::styled(
+                "  (files not loaded)",
+                Style::new().gray(),
+            )));
+        } else if commit.files_changed.is_empty() {
             lines.push(Line::from(Span::styled(
                 "  (no files changed)",
                 Style::new().gray(),
