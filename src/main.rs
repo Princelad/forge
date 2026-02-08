@@ -48,6 +48,12 @@ pub enum Focus {
     View,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    Typing,
+}
+
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
@@ -99,6 +105,7 @@ pub struct App {
     // ====================================================================
     current_view: AppMode,
     focus: Focus,
+    input_mode: InputMode,
     menu_selected_index: usize,
     show_help: bool,
     search_active: bool,
@@ -143,6 +150,7 @@ impl App {
             key_handler: KeyHandler::new(),
             current_view: AppMode::Dashboard,
             focus: Focus::View,
+            input_mode: InputMode::Normal,
             menu_selected_index: 0,
             status_message: String::from("Ready | Press ? for help"),
             progress_message: None,
@@ -747,10 +755,12 @@ impl App {
         // Build context for stateless processor
         let ctx = ActionContext {
             focus: self.focus,
+            input_mode: self.input_mode,
             current_view: self.current_view,
             show_help: self.show_help,
             search_active: self.search_active,
             menu_selected_index: self.menu_selected_index,
+            menu_len: self.screen.menu_len(),
             selected_project_index: self.dashboard.selected_index,
             selected_change_index: self.changes.selected_index,
             selected_board_column: self.board.selected_column,
@@ -806,6 +816,9 @@ impl App {
         if let Some(focus) = update.focus {
             self.focus = focus;
         }
+        if let Some(mode) = update.input_mode {
+            self.input_mode = mode;
+        }
         if let Some(view) = update.current_view {
             let old_view = self.current_view;
             self.current_view = view;
@@ -814,11 +827,17 @@ impl App {
                 self.refresh_view_cache();
             }
         }
+        if update.current_view.is_some() || update.focus == Some(Focus::Menu) {
+            self.input_mode = InputMode::Normal;
+        }
         if let Some(help) = update.show_help {
             self.show_help = help;
         }
         if let Some(search) = update.search_active {
             self.search_active = search;
+            if !search {
+                self.input_mode = InputMode::Normal;
+            }
         }
         if let Some(buf) = update.search_buffer {
             self.search_buffer = buf;
