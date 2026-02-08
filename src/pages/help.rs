@@ -53,8 +53,12 @@ impl HelpPage {
                 Span::raw("     Select/Confirm action"),
             ]),
             Line::from(vec![
+                Span::styled("Enter", Style::new().bold().cyan()),
+                Span::raw("        Start typing in inputs"),
+            ]),
+            Line::from(vec![
                 Span::styled("Esc", Style::new().bold().cyan()),
-                Span::raw("          Back to menu"),
+                Span::raw("          Back to menu / stop typing"),
             ]),
             Line::from(vec![
                 Span::styled("q / Ctrl-C", Style::new().bold().cyan()),

@@ -1,7 +1,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::ui_utils::adjust_pane_ratio;
-use crate::{AppMode, Focus};
+use crate::{AppMode, Focus, InputMode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyAction {
@@ -63,10 +63,10 @@ impl KeyHandler {
             (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
             (KeyModifiers::CONTROL, KeyCode::Char('l') | KeyCode::Char('L')) => KeyAction::Pull,
             (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
-            (KeyModifiers::NONE, KeyCode::Up | KeyCode::Char('k')) => KeyAction::NavigateUp,
-            (KeyModifiers::NONE, KeyCode::Down | KeyCode::Char('j')) => KeyAction::NavigateDown,
-            (KeyModifiers::NONE, KeyCode::Left | KeyCode::Char('h')) => KeyAction::NavigateLeft,
-            (KeyModifiers::NONE, KeyCode::Right | KeyCode::Char('l')) => KeyAction::NavigateRight,
+            (KeyModifiers::NONE, KeyCode::Up) => KeyAction::NavigateUp,
+            (KeyModifiers::NONE, KeyCode::Down) => KeyAction::NavigateDown,
+            (KeyModifiers::NONE, KeyCode::Left) => KeyAction::NavigateLeft,
+            (KeyModifiers::NONE, KeyCode::Right) => KeyAction::NavigateRight,
             (KeyModifiers::ALT, KeyCode::Left) => KeyAction::PaneNarrow,
             (KeyModifiers::ALT, KeyCode::Right) => KeyAction::PaneWiden,
             (KeyModifiers::NONE, KeyCode::PageUp) => KeyAction::ScrollPageUp,
@@ -90,70 +90,18 @@ pub struct ActionResult {
 ///
 /// # Input Mode Handling
 ///
-/// The `commit_message_empty` field enables context-aware keybindings in the Changes view.
-/// This solves the conflict between shortcut keys ('f' for fetch, 'p' for push) and
-/// typing those same characters in the commit message input.
-///
-/// ## Current Design (Phase 6c - Jan 2026)
-///
-/// **Pattern**: Conditional shortcut activation based on input state
-/// - When commit message is empty: 'f' and 'p' trigger fetch/push
-/// - When commit message has content: 'f' and 'p' are typed literally
-///
-/// **Pros**:
-/// - Simple implementation (single boolean flag)
-/// - Intuitive UX: shortcuts work when input is unused
-/// - Minimal state management overhead
-/// - Works well for current two-shortcut use case
-///
-/// **Cons**:
-/// - Scales poorly with more shortcuts (would need more conditionals)
-/// - Implicit behavior - not obvious from code structure
-/// - Mixed concerns: input state affects command routing
-///
-/// ## Alternative: Explicit Input Mode State Machine
-///
-/// **Pattern**: Dedicated `InputMode` enum with explicit transitions
-/// ```rust
-/// enum InputMode {
-///     Normal,        // Shortcuts active, no text input
-///     Typing,        // All chars go to input buffer
-///     Search,        // Search-specific input mode
-/// }
-/// ```
-///
-/// **Pros**:
-/// - Explicit state transitions (escape to exit typing mode)
-/// - Scales better with more shortcuts and input contexts
-/// - Clear separation of concerns
-/// - Common pattern in TUI apps (vim-style modal editing)
-///
-/// **Cons**:
-/// - Requires user to explicitly enter/exit typing mode (less intuitive)
-/// - More state to manage (mode transitions, visual indicators)
-/// - Breaking UX change from current behavior
-///
-/// ## Recommendation
-///
-/// **Keep current design** for now because:
-/// 1. Only 2 shortcuts ('f'/'p') currently conflict with commit message input
-/// 2. Current UX is intuitive: "shortcuts work when I'm not typing"
-/// 3. No plans for many more single-character shortcuts in Changes view
-/// 4. Alternative would require modal editing learning curve
-///
-/// **Future consideration**: If more shortcuts are needed, evaluate:
-/// - Using multi-key chords (Ctrl+F, Ctrl+P) instead of single chars
-/// - Adding explicit "focus commit message" action (Tab key?)
-/// - Implementing full modal editing if app grows significantly
-///
-/// See: CHANGELOG.md Phase 6c, src/key_handler.rs lines 292, 302, 819
+/// The app uses a hybrid input mode: press Enter to start typing in inputs and
+/// Esc to stop typing. While in `InputMode::Typing`, character keys are routed
+/// to the active input buffer instead of navigation shortcuts.
 #[derive(Debug, Clone)]
 pub struct ActionContext {
     pub focus: Focus,
+    pub input_mode: InputMode,
     pub current_view: AppMode,
     pub show_help: bool,
     pub search_active: bool,
     pub menu_selected_index: usize,
+    pub menu_len: usize,
     pub selected_project_index: usize,
     pub selected_change_index: usize,
     pub selected_board_column: usize,
@@ -215,6 +163,18 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             show_help: Some(false),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if ctx.input_mode == InputMode::Typing {
+                    return (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Stopped typing".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Normal),
                             ..Default::default()
                         },
                     );
@@ -290,7 +250,7 @@ impl ActionProcessor {
             }
             KeyAction::NextView => {
                 if ctx.focus == Focus::Menu {
-                    let menu_len = 5; // Fixed: 5 menu items
+                    let menu_len = ctx.menu_len.max(1);
                     let next_idx = (ctx.menu_selected_index + 1) % menu_len;
                     (
                         ActionResult {
@@ -335,23 +295,91 @@ impl ActionProcessor {
             KeyAction::NavigateLeft => Self::handle_navigate_left(ctx),
             KeyAction::NavigateRight => Self::handle_navigate_right(ctx),
             KeyAction::InputChar(c) => {
+                if ctx.input_mode == InputMode::Normal {
+                    match c {
+                        'k' => return Self::handle_navigate_up(ctx),
+                        'j' => return Self::handle_navigate_down(ctx),
+                        'h' => return Self::handle_navigate_left(ctx),
+                        'l' => return Self::handle_navigate_right(ctx),
+                        _ => {}
+                    }
+                }
+
+                if ctx.input_mode == InputMode::Typing {
+                    if ctx.search_active {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                search_buffer_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+
+                    if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                commit_message_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+
+                    if ctx.focus == Focus::View
+                        && matches!(ctx.current_view, AppMode::BranchManager)
+                        && ctx.branch_create_mode
+                    {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                branch_input_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+
+                    if ctx.focus == Focus::View
+                        && matches!(ctx.current_view, AppMode::ModuleManager)
+                        && (ctx.module_create_mode
+                            || ctx.module_edit_mode
+                            || ctx.developer_create_mode)
+                    {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                module_input_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+
                 if ctx.search_active {
-                    (
+                    return (
                         ActionResult {
                             should_quit: false,
                             status_message: None,
                         },
-                        ActionStateUpdate {
-                            search_buffer_append: Some(c),
-                            ..Default::default()
-                        },
-                    )
-                } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
-                    match c {
-                        // Conditional shortcuts: only active when commit message is empty
-                        // This prevents 'f' and 'p' from triggering fetch/push while typing
-                        // Alternative considered: explicit input mode (see ActionContext docs)
-                        'f' if ctx.commit_message_empty => (
+                        ActionStateUpdate::none(),
+                    );
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                    return match c {
+                        'f' => (
                             ActionResult {
                                 should_quit: false,
                                 status_message: Some("Fetching from origin...".into()),
@@ -361,7 +389,7 @@ impl ActionProcessor {
                                 ..Default::default()
                             },
                         ),
-                        'p' if ctx.commit_message_empty => (
+                        'p' => (
                             ActionResult {
                                 should_quit: false,
                                 status_message: Some("Pushing to origin...".into()),
@@ -376,15 +404,13 @@ impl ActionProcessor {
                                 should_quit: false,
                                 status_message: None,
                             },
-                            ActionStateUpdate {
-                                commit_message_append: Some(c),
-                                ..Default::default()
-                            },
+                            ActionStateUpdate::none(),
                         ),
-                    }
-                } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Dashboard)
-                {
-                    match c {
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Dashboard) {
+                    return match c {
                         'f' => (
                             ActionResult {
                                 should_quit: false,
@@ -402,17 +428,16 @@ impl ActionProcessor {
                             },
                             ActionStateUpdate::none(),
                         ),
-                    }
-                } else if ctx.focus == Focus::View
-                    && matches!(ctx.current_view, AppMode::BranchManager)
-                {
-                    // Handle branch-specific actions
-                    match c {
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::BranchManager) {
+                    return match c {
                         'n' if !ctx.branch_create_mode => (
                             ActionResult {
                                 should_quit: false,
                                 status_message: Some(
-                                    "Enter branch name (Enter to create, Esc to cancel)".into(),
+                                    "Press Enter to start typing a branch name".into(),
                                 ),
                             },
                             ActionStateUpdate {
@@ -430,16 +455,6 @@ impl ActionProcessor {
                                 ..Default::default()
                             },
                         ),
-                        _ if ctx.branch_create_mode => (
-                            ActionResult {
-                                should_quit: false,
-                                status_message: None,
-                            },
-                            ActionStateUpdate {
-                                branch_input_append: Some(c),
-                                ..Default::default()
-                            },
-                        ),
                         _ => (
                             ActionResult {
                                 should_quit: false,
@@ -447,12 +462,11 @@ impl ActionProcessor {
                             },
                             ActionStateUpdate::none(),
                         ),
-                    }
-                } else if ctx.focus == Focus::View
-                    && matches!(ctx.current_view, AppMode::ModuleManager)
-                {
-                    // Handle module manager specific actions
-                    match c {
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::ModuleManager) {
+                    return match c {
                         'a' if !ctx.module_create_mode
                             && !ctx.module_edit_mode
                             && !ctx.developer_create_mode
@@ -480,10 +494,9 @@ impl ActionProcessor {
                                 ActionResult {
                                     should_quit: false,
                                     status_message: Some(if in_developer_list {
-                                        "Enter developer name (Enter to create, Esc to cancel)"
-                                            .into()
+                                        "Press Enter to start typing a developer name".into()
                                     } else {
-                                        "Enter module name (Enter to create, Esc to cancel)".into()
+                                        "Press Enter to start typing a module name".into()
                                     }),
                                 },
                                 ActionStateUpdate {
@@ -510,7 +523,7 @@ impl ActionProcessor {
                                 ActionResult {
                                     should_quit: false,
                                     status_message: Some(
-                                        "Edit module name (Enter to save, Esc to cancel)".into(),
+                                        "Press Enter to edit the module name".into(),
                                     ),
                                 },
                                 ActionStateUpdate {
@@ -545,21 +558,6 @@ impl ActionProcessor {
                                 },
                             )
                         }
-                        _ if ctx.module_create_mode
-                            || ctx.module_edit_mode
-                            || ctx.developer_create_mode =>
-                        {
-                            (
-                                ActionResult {
-                                    should_quit: false,
-                                    status_message: None,
-                                },
-                                ActionStateUpdate {
-                                    module_input_append: Some(c),
-                                    ..Default::default()
-                                },
-                            )
-                        }
                         _ => (
                             ActionResult {
                                 should_quit: false,
@@ -567,19 +565,19 @@ impl ActionProcessor {
                             },
                             ActionStateUpdate::none(),
                         ),
-                    }
-                } else {
-                    (
-                        ActionResult {
-                            should_quit: false,
-                            status_message: None,
-                        },
-                        ActionStateUpdate::none(),
-                    )
+                    };
                 }
+
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: None,
+                    },
+                    ActionStateUpdate::none(),
+                )
             }
             KeyAction::Backspace => {
-                if ctx.search_active {
+                if ctx.input_mode == InputMode::Typing && ctx.search_active {
                     (
                         ActionResult {
                             should_quit: false,
@@ -590,7 +588,10 @@ impl ActionProcessor {
                             ..Default::default()
                         },
                     )
-                } else if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Changes) {
+                } else if ctx.input_mode == InputMode::Typing
+                    && ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::Changes)
+                {
                     (
                         ActionResult {
                             should_quit: false,
@@ -601,7 +602,8 @@ impl ActionProcessor {
                             ..Default::default()
                         },
                     )
-                } else if ctx.focus == Focus::View
+                } else if ctx.input_mode == InputMode::Typing
+                    && ctx.focus == Focus::View
                     && matches!(ctx.current_view, AppMode::BranchManager)
                     && ctx.branch_create_mode
                 {
@@ -615,7 +617,8 @@ impl ActionProcessor {
                             ..Default::default()
                         },
                     )
-                } else if ctx.focus == Focus::View
+                } else if ctx.input_mode == InputMode::Typing
+                    && ctx.focus == Focus::View
                     && matches!(ctx.current_view, AppMode::ModuleManager)
                     && (ctx.module_create_mode || ctx.module_edit_mode || ctx.developer_create_mode)
                 {
@@ -715,6 +718,7 @@ impl ActionProcessor {
                                 search_active: Some(next_active),
                                 search_buffer: Some(String::new()),
                                 selected_project_index: if next_active { Some(0) } else { None },
+                                input_mode: Some(InputMode::Normal),
                                 ..Default::default()
                             },
                         )
@@ -977,6 +981,30 @@ impl ActionProcessor {
                     ..Default::default()
                 },
             )
+        } else if matches!(ctx.current_view, AppMode::Dashboard) && ctx.search_active {
+            if ctx.input_mode == InputMode::Typing {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: Some("Search input stopped".into()),
+                    },
+                    ActionStateUpdate {
+                        input_mode: Some(InputMode::Normal),
+                        ..Default::default()
+                    },
+                )
+            } else {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: Some("Type to filter projects".into()),
+                    },
+                    ActionStateUpdate {
+                        input_mode: Some(InputMode::Typing),
+                        ..Default::default()
+                    },
+                )
+            }
         } else if matches!(ctx.current_view, AppMode::Dashboard) {
             // Switch to Changes view when pressing Enter on a project
             (
@@ -991,7 +1019,18 @@ impl ActionProcessor {
                 },
             )
         } else if matches!(ctx.current_view, AppMode::Changes) {
-            if ctx.commit_message_empty {
+            if ctx.input_mode == InputMode::Normal {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: Some("Start typing a commit message".into()),
+                    },
+                    ActionStateUpdate {
+                        input_mode: Some(InputMode::Typing),
+                        ..Default::default()
+                    },
+                )
+            } else if ctx.commit_message_empty {
                 (
                     ActionResult {
                         should_quit: false,
@@ -1008,6 +1047,7 @@ impl ActionProcessor {
                     },
                     ActionStateUpdate {
                         commit_requested: Some(()),
+                        input_mode: Some(InputMode::Normal),
                         ..Default::default()
                     },
                 )
@@ -1022,6 +1062,7 @@ impl ActionProcessor {
                     },
                     ActionStateUpdate {
                         commit_message_clear: Some(()),
+                        input_mode: Some(InputMode::Normal),
                         ..Default::default()
                     },
                 )
@@ -1061,8 +1102,18 @@ impl ActionProcessor {
             )
         } else if matches!(ctx.current_view, AppMode::BranchManager) {
             if ctx.branch_create_mode {
-                // Create branch
-                if ctx.branch_input_empty {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing a branch name".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.branch_input_empty {
                     (
                         ActionResult {
                             should_quit: false,
@@ -1078,6 +1129,7 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             branch_create_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
                             ..Default::default()
                         },
                     )
@@ -1108,7 +1160,18 @@ impl ActionProcessor {
                     },
                 )
             } else if ctx.module_create_mode {
-                if ctx.module_input_empty {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing a module name".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.module_input_empty {
                     (
                         ActionResult {
                             should_quit: false,
@@ -1124,12 +1187,24 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             module_create_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
                             ..Default::default()
                         },
                     )
                 }
             } else if ctx.module_edit_mode {
-                if ctx.module_input_empty {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing the module name".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.module_input_empty {
                     (
                         ActionResult {
                             should_quit: false,
@@ -1145,12 +1220,24 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             module_update_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
                             ..Default::default()
                         },
                     )
                 }
             } else if ctx.developer_create_mode {
-                if ctx.module_input_empty {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing the developer name".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.module_input_empty {
                     (
                         ActionResult {
                             should_quit: false,
@@ -1166,6 +1253,7 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             developer_create_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
                             ..Default::default()
                         },
                     )
@@ -1266,7 +1354,8 @@ impl ActionProcessor {
 
     fn handle_navigate_down(ctx: &ActionContext) -> (ActionResult, ActionStateUpdate) {
         if ctx.focus == Focus::Menu {
-            let next_idx = (ctx.menu_selected_index + 1).min(7);
+            let max_idx = ctx.menu_len.saturating_sub(1);
+            let next_idx = (ctx.menu_selected_index + 1).min(max_idx);
             (
                 ActionResult {
                     should_quit: false,
@@ -1414,6 +1503,7 @@ impl ActionProcessor {
 pub struct ActionStateUpdate {
     // Focus and mode
     pub focus: Option<Focus>,
+    pub input_mode: Option<InputMode>,
     pub current_view: Option<AppMode>,
     pub show_help: Option<bool>,
 
@@ -1604,7 +1694,7 @@ mod tests {
             kind: crossterm::event::KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         });
-        assert_eq!(up_vim, KeyAction::NavigateUp);
+        assert_eq!(up_vim, KeyAction::InputChar('k'));
 
         let down_vim = kh.on_key_event(crossterm::event::KeyEvent {
             code: crossterm::event::KeyCode::Char('j'),
@@ -1612,7 +1702,7 @@ mod tests {
             kind: crossterm::event::KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         });
-        assert_eq!(down_vim, KeyAction::NavigateDown);
+        assert_eq!(down_vim, KeyAction::InputChar('j'));
 
         let left_vim = kh.on_key_event(crossterm::event::KeyEvent {
             code: crossterm::event::KeyCode::Char('h'),
@@ -1620,7 +1710,7 @@ mod tests {
             kind: crossterm::event::KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         });
-        assert_eq!(left_vim, KeyAction::NavigateLeft);
+        assert_eq!(left_vim, KeyAction::InputChar('h'));
 
         let right_vim = kh.on_key_event(crossterm::event::KeyEvent {
             code: crossterm::event::KeyCode::Char('l'),
@@ -1628,7 +1718,7 @@ mod tests {
             kind: crossterm::event::KeyEventKind::Press,
             state: crossterm::event::KeyEventState::NONE,
         });
-        assert_eq!(right_vim, KeyAction::NavigateRight);
+        assert_eq!(right_vim, KeyAction::InputChar('l'));
     }
 
     #[test]

@@ -38,9 +38,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
-use git2::{DiffFormat, DiffOptions, IndexAddOption, Repository, Signature, StatusOptions, Tree};
+use git2::{
+    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StatusOptions, Tree,
+};
 
 use crate::data::{Change, FileStatus};
+
+/// Branch info: (name, is_current, is_remote, upstream)
+pub type BranchData = (String, bool, bool, Option<String>);
 
 /// Transfer progress for remote operations (fetch/push)
 #[derive(Debug, Clone, Default)]
@@ -51,6 +56,118 @@ pub struct TransferProgress {
     pub received_bytes: usize,
     pub total_deltas: usize,
     pub indexed_deltas: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepoHealthStatus {
+    Healthy,
+    Warning,
+    Unhealthy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RepoIssue {
+    IndexLocked,
+    IndexCorrupt,
+    MissingHead,
+    MissingObjects,
+    InvalidReferences,
+    PermissionDenied,
+}
+
+impl RepoIssue {
+    fn label(&self) -> &'static str {
+        match self {
+            RepoIssue::IndexLocked => "index lock present",
+            RepoIssue::IndexCorrupt => "index appears corrupt",
+            RepoIssue::MissingHead => "HEAD reference missing",
+            RepoIssue::MissingObjects => "missing git objects",
+            RepoIssue::InvalidReferences => "invalid references",
+            RepoIssue::PermissionDenied => "permission denied accessing .git",
+        }
+    }
+
+    fn is_blocking(&self) -> bool {
+        matches!(
+            self,
+            RepoIssue::IndexLocked
+                | RepoIssue::IndexCorrupt
+                | RepoIssue::MissingObjects
+                | RepoIssue::InvalidReferences
+                | RepoIssue::PermissionDenied
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RepoHealthReport {
+    pub status: RepoHealthStatus,
+    pub issues: Vec<RepoIssue>,
+    pub recovery_steps: Vec<String>,
+}
+
+impl RepoHealthReport {
+    pub fn is_healthy(&self) -> bool {
+        matches!(self.status, RepoHealthStatus::Healthy)
+    }
+
+    pub fn has_blocking_issues(&self) -> bool {
+        self.issues.iter().any(RepoIssue::is_blocking)
+    }
+
+    pub fn summary(&self) -> String {
+        if self.issues.is_empty() {
+            return "Repository healthy".to_string();
+        }
+
+        let labels: Vec<&str> = self.issues.iter().map(RepoIssue::label).collect();
+        format!("Repository issues detected: {}", labels.join(", "))
+    }
+
+    pub fn details(&self) -> String {
+        if self.issues.is_empty() {
+            return "No issues detected.".to_string();
+        }
+
+        let mut out = String::from("Issues:\n");
+        for issue in &self.issues {
+            out.push_str(&format!("- {}\n", issue.label()));
+        }
+
+        if !self.recovery_steps.is_empty() {
+            out.push_str("\nRecovery options:\n");
+            for step in &self.recovery_steps {
+                out.push_str(&format!("- {}\n", step));
+            }
+        }
+
+        out.trim_end().to_string()
+    }
+
+    pub fn format_description(&self, workdir: &Path) -> String {
+        let base = format!("Git repo at {}", workdir.display());
+        if self.issues.is_empty() {
+            return base;
+        }
+
+        format!("{}\n\n{}", base, self.details())
+    }
+}
+
+fn push_unique_step(steps: &mut Vec<String>, step: &str) {
+    if !steps.iter().any(|existing| existing == step) {
+        steps.push(step.to_string());
+    }
+}
+
+fn is_permission_denied(error: &git2::Error) -> bool {
+    let message = error.message().to_lowercase();
+    message.contains("permission denied") || message.contains("access denied")
+}
+
+fn is_corrupt_error(error: &git2::Error) -> bool {
+    let message = error.message().to_lowercase();
+    message.contains("corrupt") || message.contains("invalid")
 }
 
 impl TransferProgress {
@@ -196,6 +313,69 @@ impl GitClient {
         }
 
         Ok(changes)
+    }
+
+    /// List changes without computing diff previews.
+    ///
+    /// This is significantly faster in large repositories and allows callers
+    /// to lazily load previews for selected items.
+    pub fn list_changes_summary(&self) -> Result<Vec<Change>> {
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true)
+            .recurse_untracked_dirs(true)
+            .include_ignored(false);
+
+        let statuses = self.repo.statuses(Some(&mut opts))?;
+        let mut changes = Vec::new();
+
+        for entry in statuses.iter() {
+            let path = match entry.path() {
+                Some(p) => p.to_string(),
+                None => continue,
+            };
+
+            let status = entry.status();
+            // Map git status to our simplified FileStatus
+            let file_status = if status.is_wt_new() || status.is_index_new() {
+                FileStatus::Added
+            } else if status.is_wt_deleted() || status.is_index_deleted() {
+                FileStatus::Deleted
+            } else {
+                FileStatus::Modified
+            };
+
+            let staged = status.is_index_new()
+                || status.is_index_modified()
+                || status.is_index_deleted()
+                || status.is_index_renamed()
+                || status.is_index_typechange();
+
+            changes.push(Change {
+                path,
+                status: file_status,
+                diff_preview: "(diff not loaded)".into(),
+                local_preview: None,
+                incoming_preview: None,
+                staged,
+            });
+        }
+
+        Ok(changes)
+    }
+
+    /// Compute diff previews for a single path.
+    pub fn get_change_previews(&self, path: &str) -> (String, Option<String>, Option<String>) {
+        let local_preview = self
+            .diff_index_to_workdir_for_path(path)
+            .or_else(|| self.diff_for_path(path));
+        let incoming_preview = self.diff_head_to_index_for_path(path);
+        let diff_preview = local_preview
+            .as_ref()
+            .or(incoming_preview.as_ref())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "(no diff)".into());
+
+        (diff_preview, local_preview, incoming_preview)
     }
 
     fn diff_for_path(&self, path: &str) -> Option<String> {
@@ -429,6 +609,128 @@ impl GitClient {
         Ok(branches)
     }
 
+    /// List branches with upstream tracking information.
+    ///
+    /// Returns a vector of (branch_name, is_current, is_remote, upstream) tuples.
+    pub fn list_branches_with_upstream(
+        &self,
+        local: bool,
+        remote: bool,
+    ) -> Result<Vec<BranchData>> {
+        let mut branches = Vec::new();
+        let current_branch = self.head_branch().unwrap_or_default();
+
+        // List local branches with upstream info
+        if local {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Local))?;
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    let is_current = name == current_branch;
+                    // Get upstream for this local branch
+                    let upstream = self.get_upstream_branch(name).unwrap_or(None);
+                    branches.push((name.to_string(), is_current, false, upstream));
+                }
+            }
+        }
+
+        // List remote branches (no upstream for remote branches)
+        if remote {
+            let branch_iter = self.repo.branches(Some(git2::BranchType::Remote))?;
+            for (branch, _) in branch_iter.flatten() {
+                if let Some(name) = branch.name()? {
+                    branches.push((name.to_string(), false, true, None));
+                }
+            }
+        }
+
+        Ok(branches)
+    }
+
+    /// Get the upstream branch for a given local branch.
+    ///
+    /// Returns `None` if the branch has no upstream tracking configured.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **Remote branch**: Returns `None` (remote branches don't have upstreams)
+    /// - **No tracking branch**: Returns `None` if not configured with `git branch -u`
+    /// - **Invalid upstream**: Returns `None` if upstream reference is broken
+    pub fn get_upstream_branch(&self, branch_name: &str) -> Result<Option<String>> {
+        // Try to find the local branch
+        match self.repo.find_branch(branch_name, git2::BranchType::Local) {
+            Ok(branch) => {
+                // Get the upstream branch if it exists
+                match branch.upstream() {
+                    Ok(upstream_branch) => {
+                        if let Ok(Some(name)) = upstream_branch.name() {
+                            return Ok(Some(name.to_string()));
+                        }
+                        Ok(None)
+                    }
+                    Err(_) => {
+                        // No upstream branch configured
+                        Ok(None)
+                    }
+                }
+            }
+            Err(_) => {
+                // Not a local branch (e.g., remote branch)
+                Ok(None)
+            }
+        }
+    }
+
+    /// Calculate how many commits a branch is ahead/behind its upstream.
+    ///
+    /// Returns `Ok(None)` if the branch has no upstream or if calculation fails gracefully.
+    /// Returns `Ok(Some((ahead, behind)))` with the commit counts.
+    ///
+    /// # Edge Cases
+    ///
+    /// - **No upstream**: Returns `Ok(None)`
+    /// - **Upstream not found**: Returns `Ok(None)` (gracefully handles missing upstream)
+    /// - **Detached HEAD**: Returns `Ok(None)` (not on a branch)
+    pub fn get_ahead_behind(&self, branch_name: &str) -> Result<Option<(usize, usize)>> {
+        // Get the upstream branch
+        let upstream_name = match self.get_upstream_branch(branch_name)? {
+            Some(name) => name,
+            None => return Ok(None),
+        };
+
+        // Get local branch commit oid
+        let local_branch = match self.repo.find_branch(branch_name, git2::BranchType::Local) {
+            Ok(branch) => branch,
+            Err(_) => return Ok(None),
+        };
+
+        let local_oid = match local_branch.get().target() {
+            Some(oid) => oid,
+            None => return Ok(None),
+        };
+
+        // Get upstream branch commit oid
+        let upstream_branch = match self
+            .repo
+            .find_branch(&upstream_name, git2::BranchType::Remote)
+        {
+            Ok(branch) => branch,
+            Err(_) => return Ok(None),
+        };
+
+        let upstream_oid = match upstream_branch.get().target() {
+            Some(oid) => oid,
+            None => return Ok(None),
+        };
+
+        // Use git_graph_ahead_behind to calculate the difference
+        let (ahead, behind) = self
+            .repo
+            .graph_ahead_behind(local_oid, upstream_oid)
+            .unwrap_or((0, 0));
+
+        Ok(Some((ahead, behind)))
+    }
+
     /// Switch to a different branch
     pub fn checkout_branch(&self, branch_name: &str) -> Result<()> {
         let obj = self
@@ -449,10 +751,20 @@ impl GitClient {
 
     /// Delete a branch
     pub fn delete_branch(&self, branch_name: &str) -> Result<()> {
-        let mut branch = self
-            .repo
-            .find_branch(branch_name, git2::BranchType::Local)?;
-        branch.delete()?;
+        // Check if it's a remote branch (contains '/')
+        if branch_name.contains('/') {
+            // Delete remote branch by deleting the remote reference
+            let mut branch = self
+                .repo
+                .find_branch(branch_name, git2::BranchType::Remote)?;
+            branch.delete()?;
+        } else {
+            // Delete local branch
+            let mut branch = self
+                .repo
+                .find_branch(branch_name, git2::BranchType::Local)?;
+            branch.delete()?;
+        }
         Ok(())
     }
 
@@ -500,6 +812,59 @@ impl GitClient {
         }
 
         Ok(commits)
+    }
+
+    /// Get commit history without computing per-commit file lists.
+    pub fn get_commit_history_summary(&self, limit: usize) -> Result<Vec<CommitData>> {
+        let mut commits = Vec::new();
+        let mut revwalk = self.repo.revwalk()?;
+        revwalk.push_head()?;
+
+        for oid in revwalk.take(limit).flatten() {
+            if let Ok(commit) = self.repo.find_commit(oid) {
+                let hash = oid.to_string();
+                let author = commit.author().name().unwrap_or("Unknown").to_string();
+                let time = commit.time();
+                let date = chrono::DateTime::from_timestamp(time.seconds(), 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "Unknown date".to_string());
+                let message = commit.message().unwrap_or("").to_string();
+                commits.push((hash, author, date, message, Vec::new()));
+            }
+        }
+
+        Ok(commits)
+    }
+
+    /// Get the list of files changed for a specific commit hash.
+    pub fn get_commit_files_changed(&self, commit_hash: &str) -> Result<Vec<String>> {
+        let oid = git2::Oid::from_str(commit_hash)
+            .map_err(|_| color_eyre::eyre::eyre!("Invalid commit hash"))?;
+        let commit = self.repo.find_commit(oid)?;
+
+        let mut files = Vec::new();
+        if let Ok(tree) = commit.tree() {
+            let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
+            if let Ok(diff) = self
+                .repo
+                .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
+            {
+                diff.foreach(
+                    &mut |delta, _| {
+                        if let Some(path) = delta.new_file().path() {
+                            files.push(path.to_string_lossy().to_string());
+                        }
+                        true
+                    },
+                    None,
+                    None,
+                    None,
+                )
+                .ok();
+            }
+        }
+
+        Ok(files)
     }
 
     /// Fetch from a remote repository with progress tracking
@@ -923,24 +1288,165 @@ impl GitClient {
     pub fn pull_origin(&self, branch_name: Option<&str>) -> Result<()> {
         self.pull("origin", branch_name)
     }
-    /// Check repository health and return diagnostics
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(true)` if repository is healthy
-    /// - `Ok(false)` if repository has issues (corrupted index, missing objects, etc.)
-    /// - `Err` if unable to determine health
-    ///
-    /// # Errors
-    ///
-    /// - Repository path is invalid
-    /// - Unable to access repository metadata
-    pub fn check_health(&self) -> Result<bool> {
-        // Try to open the index - most reliable corruption indicator
-        match self.repo.index() {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
+    /// Check repository health and return a detailed report.
+    pub fn check_repo_health(&self) -> RepoHealthReport {
+        let mut issues = Vec::new();
+        let mut recovery_steps = Vec::new();
+
+        let git_dir = self.repo.path();
+        let index_lock = git_dir.join("index.lock");
+        if index_lock.exists() {
+            issues.push(RepoIssue::IndexLocked);
+            push_unique_step(
+                &mut recovery_steps,
+                "Wait for other git processes to finish",
+            );
+            push_unique_step(
+                &mut recovery_steps,
+                "If stuck, remove .git/index.lock (only when no git process is running)",
+            );
         }
+
+        match self.repo.index() {
+            Ok(_) => {}
+            Err(e) => match e.code() {
+                ErrorCode::Locked => {
+                    issues.push(RepoIssue::IndexLocked);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "If stuck, remove .git/index.lock (only when no git process is running)",
+                    );
+                }
+                _ => {
+                    if is_permission_denied(&e) {
+                        issues.push(RepoIssue::PermissionDenied);
+                        push_unique_step(
+                            &mut recovery_steps,
+                            "Check permissions: ls -la .git/ and fix ownership if needed",
+                        );
+                    } else {
+                        issues.push(RepoIssue::IndexCorrupt);
+                        if is_corrupt_error(&e) {
+                            push_unique_step(&mut recovery_steps, "Remove index: rm -f .git/index");
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Rebuild index: git reset --mixed",
+                            );
+                        }
+                        push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                    }
+                }
+            },
+        }
+
+        match self.repo.head() {
+            Ok(head) => {
+                if head.target().is_none() {
+                    issues.push(RepoIssue::InvalidReferences);
+                    push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                    push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                } else if let Err(e) = head.peel_to_commit() {
+                    match e.code() {
+                        ErrorCode::NotFound => {
+                            issues.push(RepoIssue::MissingObjects);
+                            push_unique_step(&mut recovery_steps, "Diagnose: git fsck --full");
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Repair: git gc --aggressive --prune=now",
+                            );
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "If issues persist, re-clone the repository",
+                            );
+                        }
+                        ErrorCode::UnbornBranch => {
+                            issues.push(RepoIssue::MissingHead);
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Create initial commit: git commit --allow-empty -m 'init'",
+                            );
+                        }
+                        _ if is_permission_denied(&e) => {
+                            issues.push(RepoIssue::PermissionDenied);
+                            push_unique_step(
+                                &mut recovery_steps,
+                                "Check permissions: ls -la .git/ and fix ownership if needed",
+                            );
+                        }
+                        _ => {
+                            issues.push(RepoIssue::InvalidReferences);
+                            push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                            push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                        }
+                    }
+                }
+            }
+            Err(e) => match e.code() {
+                ErrorCode::UnbornBranch => {
+                    issues.push(RepoIssue::MissingHead);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Create initial commit: git commit --allow-empty -m 'init'",
+                    );
+                }
+                ErrorCode::NotFound => {
+                    issues.push(RepoIssue::MissingHead);
+                    push_unique_step(&mut recovery_steps, "Inspect HEAD: cat .git/HEAD");
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Fix HEAD: git symbolic-ref HEAD refs/heads/main",
+                    );
+                }
+                _ if is_permission_denied(&e) => {
+                    issues.push(RepoIssue::PermissionDenied);
+                    push_unique_step(
+                        &mut recovery_steps,
+                        "Check permissions: ls -la .git/ and fix ownership if needed",
+                    );
+                }
+                _ => {
+                    issues.push(RepoIssue::InvalidReferences);
+                    push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                    push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+                }
+            },
+        }
+
+        if let Err(e) = self.repo.references() {
+            if is_permission_denied(&e) {
+                issues.push(RepoIssue::PermissionDenied);
+                push_unique_step(
+                    &mut recovery_steps,
+                    "Check permissions: ls -la .git/ and fix ownership if needed",
+                );
+            } else {
+                issues.push(RepoIssue::InvalidReferences);
+                push_unique_step(&mut recovery_steps, "Inspect refs: git show-ref");
+                push_unique_step(&mut recovery_steps, "Verify: git fsck --full");
+            }
+        }
+
+        issues.sort();
+        issues.dedup();
+
+        let status = if issues.iter().any(RepoIssue::is_blocking) {
+            RepoHealthStatus::Unhealthy
+        } else if issues.is_empty() {
+            RepoHealthStatus::Healthy
+        } else {
+            RepoHealthStatus::Warning
+        };
+
+        RepoHealthReport {
+            status,
+            issues,
+            recovery_steps,
+        }
+    }
+
+    /// Check repository health and return a coarse boolean status.
+    pub fn check_health(&self) -> Result<bool> {
+        Ok(self.check_repo_health().is_healthy())
     }
 
     /// Get a user-friendly error message from a git2 error

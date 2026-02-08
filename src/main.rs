@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crossterm::terminal;
 use ratatui::{DefaultTerminal, Frame};
 
 pub mod async_task;
@@ -14,7 +15,7 @@ pub mod ui_utils;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
 use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, KeyHandler};
-use pages::branch_manager::BranchInfo;
+use pages::branch_manager::{BranchInfo, UpstreamStatus};
 use pages::commit_history::CommitInfo;
 use pages::merge_visualizer::MergePaneFocus;
 use screen::Screen;
@@ -25,7 +26,8 @@ use state::{
 use status_symbols::{error, progress, success};
 
 // UI constants
-const WINDOW_SIZE: usize = 10;
+const DEFAULT_WINDOW_SIZE: usize = 10;
+const DIFF_PREVIEW_PLACEHOLDER: &str = "(diff not loaded)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {
@@ -44,6 +46,12 @@ pub struct AppSettings {
 pub enum Focus {
     Menu,
     View,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputMode {
+    Normal,
+    Typing,
 }
 
 fn main() -> color_eyre::Result<()> {
@@ -88,6 +96,7 @@ pub struct App {
     settings: AppSettings,
     git_client: Option<git::GitClient>,
     git_workdir: Option<PathBuf>,
+    git_health: Option<git::RepoHealthReport>,
     task_manager: TaskManager,
     pending_git_ops: Vec<GitOperation>,
 
@@ -96,10 +105,12 @@ pub struct App {
     // ====================================================================
     current_view: AppMode,
     focus: Focus,
+    input_mode: InputMode,
     menu_selected_index: usize,
     show_help: bool,
     search_active: bool,
     search_buffer: String,
+    window_size: usize,
 
     // ====================================================================
     // Page State (extracted into dedicated structs)
@@ -139,6 +150,7 @@ impl App {
             key_handler: KeyHandler::new(),
             current_view: AppMode::Dashboard,
             focus: Focus::View,
+            input_mode: InputMode::Normal,
             menu_selected_index: 0,
             status_message: String::from("Ready | Press ? for help"),
             progress_message: None,
@@ -147,6 +159,7 @@ impl App {
             show_help: false,
             search_active: false,
             search_buffer: String::new(),
+            window_size: DEFAULT_WINDOW_SIZE,
             settings: AppSettings {
                 theme: Theme::Default,
                 notifications: true,
@@ -154,6 +167,7 @@ impl App {
             },
             git_client: None,
             git_workdir: None,
+            git_health: None,
             task_manager: TaskManager::new(),
             pending_git_ops: Vec::new(),
             // Page state structs
@@ -178,20 +192,45 @@ impl App {
                     .map(|s| s.to_string_lossy().to_string())
                     .unwrap_or_else(|| "repository".into());
 
-                let changes = client.list_changes().unwrap_or_default();
+                let health = client.check_repo_health();
+                let description = health.format_description(&workdir);
+
+                let mut status_message = format!("Git: loaded status from {}", workdir.display());
+                let mut last_completion_message = None;
+
+                let changes = if health.has_blocking_issues() {
+                    let msg = error(&health.summary());
+                    status_message = msg.clone();
+                    last_completion_message = Some(msg);
+                    Vec::new()
+                } else {
+                    match client.list_changes_summary() {
+                        Ok(changes) => changes,
+                        Err(e) => {
+                            let msg = error(&git::GitClient::explain_error(&e));
+                            status_message = msg.clone();
+                            last_completion_message = Some(msg);
+                            Vec::new()
+                        }
+                    }
+                };
+
                 let project = data::Project {
                     id: uuid::Uuid::nil(),
                     name: repo_name,
-                    description: format!("Git repo at {}", workdir.display()),
+                    description,
                     branch,
                     changes,
                     modules: Vec::new(),
                     developers: Vec::new(),
                 };
                 app.store.projects = vec![project];
-                app.status_message = format!("Git: loaded status from {}", workdir.display());
+                app.status_message = status_message;
+                app.last_completion_message = last_completion_message;
                 app.git_client = Some(client);
                 app.git_workdir = Some(workdir);
+                app.git_health = Some(health);
+                app.ensure_change_preview_loaded(app.changes.selected_index);
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
@@ -215,10 +254,13 @@ impl App {
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.running = true;
+        self.handle_terminal_resize();
         while self.running {
             terminal.draw(|frame| self.render(frame))?;
             let action = self.key_handler.handle_crossterm_events()?;
-            if self.handle_action(action) {
+            if matches!(action, KeyAction::TerminalResized) {
+                self.handle_terminal_resize();
+            } else if self.handle_action(action) {
                 self.quit();
             }
 
@@ -242,7 +284,8 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    let msg = error(&e.to_string());
+                    let label = Self::describe_git_operation(&result.op);
+                    let msg = error(&format!("{} failed: {}", label, e));
                     self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
                     self.status_message = msg;
@@ -261,9 +304,128 @@ impl App {
         }
     }
 
+    fn update_repo_health(&mut self, report: git::RepoHealthReport) {
+        if let Some(workdir) = self.git_workdir.as_ref() {
+            if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
+                project.description = report.format_description(workdir);
+            }
+        }
+        self.git_health = Some(report);
+    }
+
+    fn refresh_repo_health(&mut self) -> Option<git::RepoHealthReport> {
+        let report = self
+            .git_client
+            .as_ref()
+            .map(|client| client.check_repo_health());
+        if let Some(ref report) = report {
+            self.update_repo_health(report.clone());
+        }
+        report
+    }
+
+    fn ensure_change_preview_loaded(&mut self, index: usize) {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return,
+        };
+
+        let path = self
+            .store
+            .projects
+            .get(self.dashboard.selected_index)
+            .and_then(|project| project.changes.get(index))
+            .and_then(|change| {
+                if change.diff_preview == DIFF_PREVIEW_PLACEHOLDER {
+                    Some(change.path.clone())
+                } else {
+                    None
+                }
+            });
+
+        let Some(path) = path else {
+            return;
+        };
+
+        let (diff_preview, local_preview, incoming_preview) = client.get_change_previews(&path);
+
+        if let Some(change) = self
+            .store
+            .projects
+            .get_mut(self.dashboard.selected_index)
+            .and_then(|project| project.changes.get_mut(index))
+        {
+            change.diff_preview = diff_preview;
+            change.local_preview = local_preview;
+            change.incoming_preview = incoming_preview;
+        }
+    }
+
+    fn ensure_selected_commit_files_loaded(&mut self) {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return,
+        };
+
+        let commit_hash = self
+            .commit_history
+            .cached_commits
+            .get(self.commit_history.selected_index)
+            .and_then(|commit| {
+                if commit.files_loaded {
+                    None
+                } else {
+                    Some(commit.hash.clone())
+                }
+            });
+
+        let Some(commit_hash) = commit_hash else {
+            return;
+        };
+
+        match client.get_commit_files_changed(&commit_hash) {
+            Ok(files) => {
+                if let Some(commit) = self
+                    .commit_history
+                    .cached_commits
+                    .get_mut(self.commit_history.selected_index)
+                {
+                    commit.files_changed = files;
+                    commit.files_loaded = true;
+                }
+            }
+            Err(e) => {
+                self.report_git_error("Failed to load commit files", &e);
+            }
+        }
+    }
+
+    fn ensure_repo_ready(&mut self) -> bool {
+        if let Some(report) = self.refresh_repo_health() {
+            if report.has_blocking_issues() {
+                let msg = error(&report.summary());
+                self.status_message = msg.clone();
+                self.last_completion_message = Some(msg);
+                return false;
+            }
+        }
+        true
+    }
+
+    fn report_git_error(&mut self, context: &str, e: &color_eyre::eyre::Report) {
+        let detail = git::GitClient::explain_error(e);
+        let msg = error(&format!("{}: {}", context, detail));
+        self.status_message = msg.clone();
+        self.last_completion_message = Some(msg);
+    }
+
     fn enqueue_git_operation(&mut self, op: GitOperation) {
         if self.git_workdir.is_none() || self.git_client.is_none() {
             self.status_message = error("No Git repository");
+            return;
+        }
+
+        if !self.ensure_repo_ready() {
             return;
         }
 
@@ -296,6 +458,140 @@ impl App {
         }
 
         self.status_message.clone()
+    }
+
+    fn handle_terminal_resize(&mut self) {
+        let window_size = terminal::size()
+            .map(|(_, rows)| Self::window_size_from_rows(rows))
+            .unwrap_or(DEFAULT_WINDOW_SIZE);
+        if window_size != self.window_size {
+            self.window_size = window_size;
+            self.reflow_scroll_for_window();
+        }
+    }
+
+    fn window_size_from_rows(rows: u16) -> usize {
+        // Reserve rows for borders, menu header, and status bar.
+        let usable_rows = rows.saturating_sub(6);
+        usize::from(usable_rows.max(1))
+    }
+
+    fn reflow_scroll_for_window(&mut self) {
+        let window_size = self.window_size.max(1);
+
+        let project_count = self.store.projects.len();
+        self.dashboard.selected_index = self
+            .dashboard
+            .selected_index
+            .min(project_count.saturating_sub(1));
+        self.dashboard.scroll = self
+            .dashboard
+            .scroll
+            .min(project_count.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.dashboard.selected_index,
+            &mut self.dashboard.scroll,
+            window_size,
+        );
+
+        let (changes_len, modules_len, developers_len) = self
+            .store
+            .projects
+            .get(self.dashboard.selected_index)
+            .map(|project| {
+                (
+                    project.changes.len(),
+                    project.modules.len(),
+                    project.developers.len(),
+                )
+            })
+            .unwrap_or((0, 0, 0));
+
+        self.changes.selected_index = self
+            .changes
+            .selected_index
+            .min(changes_len.saturating_sub(1));
+        self.changes.scroll = self
+            .changes
+            .scroll
+            .min(changes_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.changes.selected_index,
+            &mut self.changes.scroll,
+            window_size,
+        );
+
+        self.merge.selected_file_index = self
+            .merge
+            .selected_file_index
+            .min(changes_len.saturating_sub(1));
+        self.merge.scroll = self
+            .merge
+            .scroll
+            .min(changes_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.merge.selected_file_index,
+            &mut self.merge.scroll,
+            window_size,
+        );
+
+        let commit_len = self.commit_history.cached_commits.len();
+        self.commit_history.selected_index = self
+            .commit_history
+            .selected_index
+            .min(commit_len.saturating_sub(1));
+        self.commit_history.scroll = self
+            .commit_history
+            .scroll
+            .min(commit_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.commit_history.selected_index,
+            &mut self.commit_history.scroll,
+            window_size,
+        );
+
+        let branch_len = self.branch_manager.cached_branches.len();
+        self.branch_manager.selected_index = self
+            .branch_manager
+            .selected_index
+            .min(branch_len.saturating_sub(1));
+        self.branch_manager.scroll = self
+            .branch_manager
+            .scroll
+            .min(branch_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.branch_manager.selected_index,
+            &mut self.branch_manager.scroll,
+            window_size,
+        );
+
+        self.module_manager.selected_module = self
+            .module_manager
+            .selected_module
+            .min(modules_len.saturating_sub(1));
+        self.module_manager.module_scroll = self
+            .module_manager
+            .module_scroll
+            .min(modules_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.module_manager.selected_module,
+            &mut self.module_manager.module_scroll,
+            window_size,
+        );
+
+        self.module_manager.selected_developer = self
+            .module_manager
+            .selected_developer
+            .min(developers_len.saturating_sub(1));
+        self.module_manager.developer_scroll = self
+            .module_manager
+            .developer_scroll
+            .min(developers_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.module_manager.selected_developer,
+            &mut self.module_manager.developer_scroll,
+            window_size,
+        );
     }
 
     fn render(&mut self, frame: &mut Frame) {
@@ -459,10 +755,12 @@ impl App {
         // Build context for stateless processor
         let ctx = ActionContext {
             focus: self.focus,
+            input_mode: self.input_mode,
             current_view: self.current_view,
             show_help: self.show_help,
             search_active: self.search_active,
             menu_selected_index: self.menu_selected_index,
+            menu_len: self.screen.menu_len(),
             selected_project_index: self.dashboard.selected_index,
             selected_change_index: self.changes.selected_index,
             selected_board_column: self.board.selected_column,
@@ -513,9 +811,13 @@ impl App {
     }
 
     fn apply_action_updates(&mut self, update: ActionStateUpdate) {
+        let window_size = self.window_size.max(1);
         // Apply all optional state updates
         if let Some(focus) = update.focus {
             self.focus = focus;
+        }
+        if let Some(mode) = update.input_mode {
+            self.input_mode = mode;
         }
         if let Some(view) = update.current_view {
             let old_view = self.current_view;
@@ -525,11 +827,17 @@ impl App {
                 self.refresh_view_cache();
             }
         }
+        if update.current_view.is_some() || update.focus == Some(Focus::Menu) {
+            self.input_mode = InputMode::Normal;
+        }
         if let Some(help) = update.show_help {
             self.show_help = help;
         }
         if let Some(search) = update.search_active {
             self.search_active = search;
+            if !search {
+                self.input_mode = InputMode::Normal;
+            }
         }
         if let Some(buf) = update.search_buffer {
             self.search_buffer = buf;
@@ -548,6 +856,7 @@ impl App {
         }
         if let Some(idx) = update.selected_change_index {
             self.changes.selected_index = idx;
+            self.ensure_change_preview_loaded(self.changes.selected_index);
         }
         if let Some(idx) = update.selected_board_column {
             self.board.selected_column = idx;
@@ -557,6 +866,7 @@ impl App {
         }
         if let Some(idx) = update.selected_merge_file_index {
             self.merge.selected_file_index = idx;
+            self.ensure_change_preview_loaded(self.merge.selected_file_index);
         }
         if let Some(idx) = update.selected_setting_index {
             self.selected_setting_index = idx;
@@ -568,13 +878,14 @@ impl App {
             // Auto-scroll to keep selection visible
             if self.commit_history.selected_index < self.commit_history.scroll {
                 self.commit_history.scroll = self.commit_history.selected_index;
-            } else if self.commit_history.selected_index >= self.commit_history.scroll + WINDOW_SIZE
+            } else if self.commit_history.selected_index >= self.commit_history.scroll + window_size
             {
                 self.commit_history.scroll = self
                     .commit_history
                     .selected_index
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
+            self.ensure_selected_commit_files_loaded();
         }
         if let Some(idx) = update.selected_branch_index {
             self.branch_manager.selected_index =
@@ -582,12 +893,12 @@ impl App {
             // Auto-scroll to keep selection visible
             if self.branch_manager.selected_index < self.branch_manager.scroll {
                 self.branch_manager.scroll = self.branch_manager.selected_index;
-            } else if self.branch_manager.selected_index >= self.branch_manager.scroll + WINDOW_SIZE
+            } else if self.branch_manager.selected_index >= self.branch_manager.scroll + window_size
             {
                 self.branch_manager.scroll = self
                     .branch_manager
                     .selected_index
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(idx) = update.selected_module_index {
@@ -602,12 +913,12 @@ impl App {
             if self.module_manager.selected_module < self.module_manager.module_scroll {
                 self.module_manager.module_scroll = self.module_manager.selected_module;
             } else if self.module_manager.selected_module
-                >= self.module_manager.module_scroll + WINDOW_SIZE
+                >= self.module_manager.module_scroll + window_size
             {
                 self.module_manager.module_scroll = self
                     .module_manager
                     .selected_module
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(idx) = update.selected_developer_index {
@@ -622,12 +933,12 @@ impl App {
             if self.module_manager.selected_developer < self.module_manager.developer_scroll {
                 self.module_manager.developer_scroll = self.module_manager.selected_developer;
             } else if self.module_manager.selected_developer
-                >= self.module_manager.developer_scroll + WINDOW_SIZE
+                >= self.module_manager.developer_scroll + window_size
             {
                 self.module_manager.developer_scroll = self
                     .module_manager
                     .selected_developer
-                    .saturating_sub(WINDOW_SIZE - 1);
+                    .saturating_sub(window_size - 1);
             }
         }
         if let Some(c) = update.commit_message_append {
@@ -644,7 +955,7 @@ impl App {
         }
         if let Some(amount) = update.project_scroll_down {
             let max = self.store.projects.len();
-            self.dashboard.scroll_down(amount, max, WINDOW_SIZE);
+            self.dashboard.scroll_down(amount, max, window_size);
         }
         if let Some(amount) = update.changes_scroll_up {
             self.changes.scroll_up(amount);
@@ -656,7 +967,7 @@ impl App {
                 .get(self.dashboard.selected_index)
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
-            self.changes.scroll_down(amount, max, WINDOW_SIZE);
+            self.changes.scroll_down(amount, max, window_size);
         }
         if let Some(ratio) = update.changes_pane_ratio {
             self.changes.changes_pane_ratio = ratio;
@@ -696,7 +1007,7 @@ impl App {
                 .get(self.dashboard.selected_index)
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
-            self.merge.scroll_down(amount, max, WINDOW_SIZE);
+            self.merge.scroll_down(amount, max, window_size);
         }
 
         // Complex navigation handlers
@@ -752,6 +1063,7 @@ impl App {
                 .map(|p| p.changes.len())
                 .unwrap_or(0);
             self.merge.navigate_down(max);
+            self.ensure_change_preview_loaded(self.merge.selected_file_index);
         }
         if update.navigate_settings_down.is_some() {
             let max = self.settings_options().len().saturating_sub(1);
@@ -974,7 +1286,10 @@ impl App {
     }
 
     fn perform_commit(&mut self) {
-        let msg = self.changes.commit_message.trim();
+        let msg = self.changes.commit_message.trim().to_string();
+        if !self.ensure_repo_ready() {
+            return;
+        }
         if let Some(client) = &self.git_client {
             // Check if any files are staged
             let has_staged = self
@@ -989,14 +1304,15 @@ impl App {
                 return;
             }
 
-            match client.commit_all(msg) {
+            match client.commit_all(&msg) {
                 Ok(_oid) => {
                     // Refresh changes and bump progress
-                    if let Ok(changes) = client.list_changes() {
+                    if let Ok(changes) = client.list_changes_summary() {
                         if let Some(project) =
                             self.store.projects.get_mut(self.dashboard.selected_index)
                         {
                             project.changes = changes;
+                            self.ensure_change_preview_loaded(self.changes.selected_index);
                         }
                     }
                     self.store
@@ -1008,30 +1324,53 @@ impl App {
                     }
                 }
                 Err(e) => {
-                    self.status_message = error(&format!("Commit failed: {}", e));
+                    self.report_git_error("Commit failed", &e);
                 }
             }
         }
     }
 
     fn refresh_view_cache(&mut self) {
-        if let Some(client) = &self.git_client {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let mut error: Option<(String, color_eyre::eyre::Report)> = None;
+
+        if let Some(client) = self.git_client.as_ref() {
             match self.current_view {
-                AppMode::BranchManager => {
-                    if let Ok(branches) = client.list_branches(true, false) {
+                AppMode::BranchManager => match client.list_branches_with_upstream(true, true) {
+                    Ok(branches) => {
                         let branch_infos: Vec<BranchInfo> = branches
                             .into_iter()
-                            .map(|(name, is_current)| BranchInfo {
-                                name,
-                                is_current,
-                                is_remote: false,
+                            .map(|(name, is_current, is_remote, upstream)| {
+                                let upstream_status =
+                                    if !is_remote {
+                                        upstream.as_ref().and_then(|_| {
+                                            client.get_ahead_behind(&name).ok().flatten().map(
+                                                |(ahead, behind)| UpstreamStatus { ahead, behind },
+                                            )
+                                        })
+                                    } else {
+                                        None
+                                    };
+
+                                BranchInfo {
+                                    name,
+                                    is_current,
+                                    is_remote,
+                                    upstream,
+                                    upstream_status,
+                                }
                             })
                             .collect();
                         self.branch_manager.update_branches(branch_infos);
                     }
-                }
-                AppMode::CommitHistory => {
-                    if let Ok(commits) = client.get_commit_history(50) {
+                    Err(e) => {
+                        error = Some(("Failed to list branches".to_string(), e));
+                    }
+                },
+                AppMode::CommitHistory => match client.get_commit_history_summary(50) {
+                    Ok(commits) => {
                         let commit_infos: Vec<CommitInfo> = commits
                             .into_iter()
                             .map(|(hash, author, date, message, files)| CommitInfo {
@@ -1040,28 +1379,46 @@ impl App {
                                 date,
                                 message,
                                 files_changed: files,
+                                files_loaded: false,
                             })
                             .collect();
                         self.commit_history.update_commits(commit_infos);
+                        self.ensure_selected_commit_files_loaded();
                     }
-                }
+                    Err(e) => {
+                        error = Some(("Failed to load commit history".to_string(), e));
+                    }
+                },
                 AppMode::Changes => {
                     // Refresh changes when entering the view
-                    if let Ok(changes) = client.list_changes() {
-                        if let Some(project) =
-                            self.store.projects.get_mut(self.dashboard.selected_index)
-                        {
-                            project.changes = changes;
-                            project.branch = client.head_branch().unwrap_or_default();
+                    match client.list_changes_summary() {
+                        Ok(changes) => {
+                            if let Some(project) =
+                                self.store.projects.get_mut(self.dashboard.selected_index)
+                            {
+                                project.changes = changes;
+                                project.branch = client.head_branch().unwrap_or_default();
+                            }
+                            self.ensure_change_preview_loaded(self.changes.selected_index);
+                        }
+                        Err(e) => {
+                            error = Some(("Failed to list changes".to_string(), e));
                         }
                     }
                 }
                 _ => {}
             }
         }
+
+        if let Some((context, err)) = error {
+            self.report_git_error(&context, &err);
+        }
     }
 
     fn perform_branch_switch(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_info = self
             .branch_manager
             .selected_branch()
@@ -1087,7 +1444,7 @@ impl App {
                         }
                     }
                     Err(e) => {
-                        self.status_message = error(&format!("Failed to switch branch: {}", e));
+                        self.report_git_error("Failed to switch branch", &e);
                     }
                 }
             }
@@ -1095,6 +1452,9 @@ impl App {
     }
 
     fn perform_branch_create(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_name = self.branch_manager.get_input_value();
         if let Some(client) = &self.git_client {
             match client.create_branch(branch_name) {
@@ -1105,13 +1465,16 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.status_message = error(&format!("Failed to create branch: {}", e));
+                    self.report_git_error("Failed to create branch", &e);
                 }
             }
         }
     }
 
     fn perform_branch_delete(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         let branch_info = self
             .branch_manager
             .selected_branch()
@@ -1131,7 +1494,7 @@ impl App {
                         self.refresh_view_cache();
                     }
                     Err(e) => {
-                        self.status_message = error(&format!("Failed to delete branch: {}", e));
+                        self.report_git_error("Failed to delete branch", &e);
                     }
                 }
             }
@@ -1159,7 +1522,7 @@ impl App {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = error("Failed to create module");
+            self.status_message = error(&format!("Failed to create module '{}'", module_name));
         }
     }
 
@@ -1177,7 +1540,7 @@ impl App {
                     let _ = self.store.save_to_json(wd);
                 }
             } else {
-                self.status_message = error("Failed to update module");
+                self.status_message = error(&format!("Failed to update module '{}'", module_name));
             }
         }
     }
@@ -1201,7 +1564,8 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = error("Failed to delete module");
+                    self.status_message =
+                        error(&format!("Failed to delete module '{}'", module_name));
                 }
             }
         }
@@ -1219,7 +1583,8 @@ impl App {
                 let _ = self.store.save_to_json(wd);
             }
         } else {
-            self.status_message = error("Failed to create developer");
+            self.status_message =
+                error(&format!("Failed to create developer '{}'", developer_name));
         }
     }
 
@@ -1246,13 +1611,17 @@ impl App {
                         let _ = self.store.save_to_json(wd);
                     }
                 } else {
-                    self.status_message = error("Failed to delete developer");
+                    self.status_message =
+                        error(&format!("Failed to delete developer '{}'", developer_name));
                 }
             }
         }
     }
 
     fn toggle_file_staging(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
         if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
             if let Some(change) = project.changes.get(self.changes.selected_index) {
                 let path = change.path.clone();
@@ -1268,22 +1637,24 @@ impl App {
                     match result {
                         Ok(()) => {
                             // Refresh changes to update staging status
-                            if let Ok(changes) = client.list_changes() {
-                                project.changes = changes;
-                                self.status_message = if is_staged {
-                                    success(&format!("Unstaged: {}", path))
-                                } else {
-                                    success(&format!("Staged: {}", path))
-                                };
+                            match client.list_changes_summary() {
+                                Ok(changes) => {
+                                    project.changes = changes;
+                                    self.ensure_change_preview_loaded(self.changes.selected_index);
+                                    self.status_message = if is_staged {
+                                        success(&format!("Unstaged: {}", path))
+                                    } else {
+                                        success(&format!("Staged: {}", path))
+                                    };
+                                }
+                                Err(e) => {
+                                    self.report_git_error("Failed to refresh changes", &e);
+                                }
                             }
                         }
                         Err(e) => {
-                            self.status_message = error(&format!(
-                                "Failed to {} {}: {}",
-                                if is_staged { "unstage" } else { "stage" },
-                                path,
-                                e
-                            ));
+                            let action = if is_staged { "Unstage" } else { "Stage" };
+                            self.report_git_error(&format!("{} failed for {}", action, path), &e);
                         }
                     }
                 }
@@ -1307,6 +1678,7 @@ impl App {
         if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
             if let Some(module) = project.modules.get(self.module_manager.selected_module) {
                 let module_id = module.id;
+                let module_name = module.name.clone();
                 if let Some(developer) = project
                     .developers
                     .get(self.module_manager.selected_developer)
@@ -1318,14 +1690,19 @@ impl App {
                         module_id,
                         Some(developer_id),
                     ) {
-                        self.status_message =
-                            success(&format!("Assigned {} to module", developer_name));
+                        self.status_message = success(&format!(
+                            "Assigned {} to module {}",
+                            developer_name, module_name
+                        ));
                         self.module_manager.assign_mode = false;
                         if let Some(wd) = self.git_workdir.as_ref() {
                             let _ = self.store.save_to_json(wd);
                         }
                     } else {
-                        self.status_message = error("Failed to assign developer");
+                        self.status_message = error(&format!(
+                            "Failed to assign {} to module {}",
+                            developer_name, module_name
+                        ));
                     }
                 }
             }

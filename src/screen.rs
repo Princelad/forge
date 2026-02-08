@@ -108,6 +108,10 @@ impl Screen {
         }
     }
 
+    pub fn menu_len(&self) -> usize {
+        self.main_menu.menu_items.len()
+    }
+
     pub fn render(&mut self, frame: &mut Frame, ctx: &RenderContext) {
         // Tick spinner if there are pending operations
         if ctx.pending_git_ops_count > 0 {

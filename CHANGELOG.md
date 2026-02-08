@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.0 — 2026-02-08
+
+### Added
+
+- Improved error messages with standardized formatting and added context.
+- Terminal resize handling with automatic UI redraw.
+- Git repo validation and recovery guidance for corrupted repositories.
+- Upstream tracking display with ahead/behind status.
+- Remote branch tracking with deletion handling.
+- Remote fetch, pull, and push with progress and cancellation.
+
+### Changed
+
+- Git operations optimized for large repositories.
+- Cached expensive computations to improve responsiveness.
+- Background task handling improvements for long-running operations.
+- Page state extracted into dedicated structs for better isolation and testability.
+- Documentation refreshed for the v0.3.0 release.
+
 ## v0.2.0 — 2026-01-28
 
 ### Added

@@ -1,16 +1,34 @@
 # Progress
 
 - Pending:
-  - [ ] Remote branch tracking
-  - [ ] Upstream tracking display
-  - [ ] Handle corrupted Git repos
-  - [ ] Terminal resize handling
-  - [ ] Large repo performance optimization
-  - [ ] Error message improvements
 
-- Ongoing: [ ]
+- Ongoing:
 
 - Completed:
+  - [x] Error message improvements
+    - [x] Standardize error formatting
+    - [x] Add context to messages
+    - [x] Test user comprehension
+  - [x] Large repo performance optimization
+    - [x] Profile hot paths
+    - [x] Optimize git operations
+    - [x] Cache expensive computations
+  - [x] Terminal resize handling
+    - [x] Listen for resize events
+    - [x] Redraw UI on resize
+    - [x] Test with various terminal sizes
+  - [x] Handle corrupted Git repos
+    - [x] Add validation on repo open
+    - [x] Implement recovery options
+    - [x] Display user-friendly errors
+  - [x] Upstream tracking display
+    - [x] Detect upstream branch
+    - [x] Show upstream status (ahead/behind)
+    - [x] Handle untracked branches
+  - [x] Remote branch tracking
+    - [x] Parse remote branches from git2
+    - [x] Display remote branches in UI
+    - [x] Handle branch deletion
   - [x] Remote fetch/pull/push with progress
   - [x] State extraction into page structs
   - [x] Background task improvements
