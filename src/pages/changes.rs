@@ -55,7 +55,7 @@ impl ChangesPage {
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::bordered().title(format!(
-                    "Branch: {} | Space: stage/unstage | f: fetch | p: push | Ctrl+l: pull",
+                    "Branch: {} | Space: stage/unstage | f: fetch | p: push | Alt+f/p: fetch/push | Ctrl+l: pull",
                     params.project.branch
                 )))
                 .highlight_style(ratatui::style::Style::new().reversed())
