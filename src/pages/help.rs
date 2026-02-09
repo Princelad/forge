@@ -119,6 +119,10 @@ impl HelpPage {
             Line::from(vec![
                 Span::styled("Remote", Style::new().bold().magenta()),
                 Span::raw("      "),
+                Span::styled("Alt+f", Style::new().bold()),
+                Span::raw(": Fetch, "),
+                Span::styled("Alt+p", Style::new().bold()),
+                Span::raw(": Push, "),
                 Span::styled("Ctrl+l", Style::new().bold()),
                 Span::raw(": Pull (Changes view)"),
             ]),

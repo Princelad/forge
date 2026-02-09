@@ -62,6 +62,8 @@ impl KeyHandler {
             (_, KeyCode::Char('?')) => KeyAction::Help,
             (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
             (KeyModifiers::CONTROL, KeyCode::Char('l') | KeyCode::Char('L')) => KeyAction::Pull,
+            (KeyModifiers::ALT, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Fetch,
+            (KeyModifiers::ALT, KeyCode::Char('p') | KeyCode::Char('P')) => KeyAction::Push,
             (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
             (KeyModifiers::NONE, KeyCode::Up) => KeyAction::NavigateUp,
             (KeyModifiers::NONE, KeyCode::Down) => KeyAction::NavigateDown,
