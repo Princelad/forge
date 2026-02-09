@@ -69,8 +69,10 @@ cd /path/to/your/repo
 2. **Stage files** with Space
 3. **Commit** with Enter
 4. **View help** with `?`
-5. **Pull** with Ctrl+L (Changes view)
-6. **Quit** with Ctrl+C
+5. **Fetch** with Alt+F (Changes view)
+6. **Push** with Alt+P (Changes view)
+7. **Pull** with Ctrl+L (Changes view)
+8. **Quit** with Ctrl+C
 
 See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 
