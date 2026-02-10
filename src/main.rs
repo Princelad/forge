@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +30,7 @@ use status_symbols::{error, progress, success};
 
 // UI constants
 const DEFAULT_WINDOW_SIZE: usize = 10;
+const AUTOSYNC_INTERVAL: Duration = Duration::from_secs(300);
 const DIFF_PREVIEW_PLACEHOLDER: &str = "(diff not loaded)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +114,7 @@ pub struct App {
     git_health: Option<git::RepoHealthReport>,
     task_manager: TaskManager,
     pending_git_ops: Vec<GitOperation>,
+    last_autosync_at: Option<Instant>,
 
     // ====================================================================
     // Navigation & Focus State
@@ -181,6 +184,7 @@ impl App {
             git_health: None,
             task_manager: TaskManager::new(),
             pending_git_ops: Vec::new(),
+            last_autosync_at: None,
             // Page state structs
             dashboard: DashboardState::new(),
             changes: ChangesState::new(),
@@ -263,6 +267,10 @@ impl App {
                         }
                     }
                 }
+
+                if app.settings.autosync {
+                    app.maybe_autosync(true);
+                }
             }
         }
 
@@ -283,6 +291,9 @@ impl App {
 
             // Poll for completed background operations
             self.poll_background_tasks();
+
+            // Auto-fetch when autosync is enabled
+            self.maybe_autosync(false);
         }
         Ok(())
     }
@@ -294,18 +305,16 @@ impl App {
             match result.result {
                 Ok(status) => {
                     let msg = success(&status);
-                    self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
-                    self.status_message = msg;
+                    self.apply_completion_message(msg, false);
                     // Refresh view cache to show updated data
                     self.refresh_view_cache();
                 }
                 Err(e) => {
                     let label = Self::describe_git_operation(&result.op);
                     let msg = error(&format!("{} failed: {}", label, e));
-                    self.last_completion_message = Some(msg.clone());
                     self.progress_message = None;
-                    self.status_message = msg;
+                    self.apply_completion_message(msg, true);
                 }
             }
         }
@@ -479,6 +488,48 @@ impl App {
             self.last_completion_message = None;
             self.pending_git_ops.push(op.clone());
             self.task_manager.spawn_operation(workdir, op);
+        }
+    }
+
+    fn apply_completion_message(&mut self, msg: String, force: bool) {
+        if self.settings.notifications || force {
+            self.last_completion_message = Some(msg.clone());
+            self.status_message = msg;
+        } else {
+            self.last_completion_message = None;
+        }
+    }
+
+    fn maybe_autosync(&mut self, force: bool) {
+        if !self.settings.autosync {
+            return;
+        }
+
+        if !force {
+            if let Some(last) = self.last_autosync_at {
+                if last.elapsed() < AUTOSYNC_INTERVAL {
+                    return;
+                }
+            }
+        }
+
+        if !self.pending_git_ops.is_empty() || self.git_client.is_none() {
+            return;
+        }
+
+        self.refresh_remotes();
+        if self.available_remotes.is_empty() {
+            self.last_autosync_at = Some(Instant::now());
+            return;
+        }
+
+        if self.selected_remote_index.is_none() {
+            self.selected_remote_index = Some(0);
+        }
+
+        if let Some(remote) = self.selected_remote_name().map(|name| name.to_string()) {
+            self.last_autosync_at = Some(Instant::now());
+            self.enqueue_git_operation(GitOperation::Fetch(remote));
         }
     }
 
@@ -1019,31 +1070,34 @@ impl App {
         }
         if let Some(ratio) = update.changes_pane_ratio {
             self.changes.changes_pane_ratio = ratio;
-            self.last_completion_message = Some(format!(
-                "Changes pane: {}% (Alt+←/→)",
-                self.changes.changes_pane_ratio
-            ));
+            self.apply_completion_message(
+                format!(
+                    "Changes pane: {}% (Alt+←/→)",
+                    self.changes.changes_pane_ratio
+                ),
+                false,
+            );
         }
         if let Some(ratio) = update.commit_pane_ratio {
             self.changes.commit_pane_ratio = ratio;
-            self.last_completion_message = Some(format!(
-                "Commit pane: {}% (Alt+←/→)",
-                self.changes.commit_pane_ratio
-            ));
+            self.apply_completion_message(
+                format!("Commit pane: {}% (Alt+←/→)", self.changes.commit_pane_ratio),
+                false,
+            );
         }
         if let Some(ratio) = update.module_pane_ratio {
             self.module_manager.pane_ratio = ratio;
-            self.last_completion_message = Some(format!(
-                "Module pane: {}% (Alt+←/→)",
-                self.module_manager.pane_ratio
-            ));
+            self.apply_completion_message(
+                format!("Module pane: {}% (Alt+←/→)", self.module_manager.pane_ratio),
+                false,
+            );
         }
         if let Some(ratio) = update.dashboard_pane_ratio {
             self.dashboard.pane_ratio = ratio;
-            self.last_completion_message = Some(format!(
-                "Dashboard pane: {}% (Alt+←/→)",
-                self.dashboard.pane_ratio
-            ));
+            self.apply_completion_message(
+                format!("Dashboard pane: {}% (Alt+←/→)", self.dashboard.pane_ratio),
+                false,
+            );
         }
         if let Some(amount) = update.merge_scroll_up {
             self.merge.scroll_up(amount);
@@ -1382,6 +1436,9 @@ impl App {
                         "Off"
                     }
                 );
+                if !self.settings.notifications {
+                    self.last_completion_message = None;
+                }
                 self.persist_settings();
             }
             3 => {
@@ -1391,6 +1448,9 @@ impl App {
                     if self.settings.autosync { "On" } else { "Off" }
                 );
                 self.persist_settings();
+                if self.settings.autosync {
+                    self.maybe_autosync(true);
+                }
             }
             _ => {}
         }
@@ -1902,7 +1962,7 @@ impl App {
                 }
             ),
             format!(
-                "Notifications: {} (placeholder)",
+                "Notifications: {}",
                 if self.settings.notifications {
                     "On"
                 } else {
@@ -1910,7 +1970,7 @@ impl App {
                 }
             ),
             format!(
-                "Autosync: {} (placeholder)",
+                "Autosync: {}",
                 if self.settings.autosync { "On" } else { "Off" }
             ),
         ]
