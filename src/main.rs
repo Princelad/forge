@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crossterm::terminal;
 use ratatui::{DefaultTerminal, Frame};
 
@@ -29,17 +31,28 @@ use status_symbols::{error, progress, success};
 const DEFAULT_WINDOW_SIZE: usize = 10;
 const DIFF_PREVIEW_PLACEHOLDER: &str = "(diff not loaded)";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Theme {
     Default,
     HighContrast,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub theme: Theme,
     pub notifications: bool,
     pub autosync: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: Theme::Default,
+            notifications: true,
+            autosync: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,11 +175,7 @@ impl App {
             search_active: false,
             search_buffer: String::new(),
             window_size: DEFAULT_WINDOW_SIZE,
-            settings: AppSettings {
-                theme: Theme::Default,
-                notifications: true,
-                autosync: false,
-            },
+            settings: AppSettings::default(),
             git_client: None,
             git_workdir: None,
             git_health: None,
@@ -240,6 +249,9 @@ impl App {
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
                     let _ = app.store.load_from_json(wd);
+                    if let Ok(Some(settings)) = app.load_settings_from(wd) {
+                        app.settings = settings;
+                    }
                 }
                 // Auto-populate developers from Git history
                 if let Some(client) = &app.git_client {
@@ -372,17 +384,13 @@ impl App {
             None => return,
         };
 
-        let path = self
-            .merge
-            .conflicts
-            .get(index)
-            .and_then(|conflict| {
-                if conflict.diff_preview == DIFF_PREVIEW_PLACEHOLDER {
-                    Some(conflict.path.clone())
-                } else {
-                    None
-                }
-            });
+        let path = self.merge.conflicts.get(index).and_then(|conflict| {
+            if conflict.diff_preview == DIFF_PREVIEW_PLACEHOLDER {
+                Some(conflict.path.clone())
+            } else {
+                None
+            }
+        });
 
         let Some(path) = path else {
             return;
@@ -1309,9 +1317,7 @@ impl App {
                 self.git_client = Some(client);
                 result.err().map(|e| e.to_string())
             } else {
-                return Err(MergeAcceptError::Status(
-                    "No Git repository".to_string(),
-                ));
+                return Err(MergeAcceptError::Status("No Git repository".to_string()));
             };
 
             if let Some(err_msg) = resolve_error {
@@ -1364,6 +1370,7 @@ impl App {
                         Theme::HighContrast => "High Contrast",
                     }
                 );
+                self.persist_settings();
             }
             2 => {
                 self.settings.notifications = !self.settings.notifications;
@@ -1375,6 +1382,7 @@ impl App {
                         "Off"
                     }
                 );
+                self.persist_settings();
             }
             3 => {
                 self.settings.autosync = !self.settings.autosync;
@@ -1382,6 +1390,7 @@ impl App {
                     "⚙ Autosync: {}",
                     if self.settings.autosync { "On" } else { "Off" }
                 );
+                self.persist_settings();
             }
             _ => {}
         }
@@ -1439,27 +1448,23 @@ impl App {
         let mut error: Option<(String, color_eyre::eyre::Report)> = None;
 
         match self.current_view {
-            AppMode::BranchManager => {
-                match self.load_branch_infos() {
-                    Ok(branch_infos) => {
-                        self.branch_manager.update_branches(branch_infos);
-                    }
-                    Err(e) => {
-                        error = Some(("Failed to list branches".to_string(), e));
-                    }
+            AppMode::BranchManager => match self.load_branch_infos() {
+                Ok(branch_infos) => {
+                    self.branch_manager.update_branches(branch_infos);
                 }
-            }
-            AppMode::CommitHistory => {
-                match self.load_commit_history(50) {
-                    Ok(commit_infos) => {
-                        self.commit_history.update_commits(commit_infos);
-                        self.ensure_selected_commit_files_loaded();
-                    }
-                    Err(e) => {
-                        error = Some(("Failed to load commit history".to_string(), e));
-                    }
+                Err(e) => {
+                    error = Some(("Failed to list branches".to_string(), e));
                 }
-            }
+            },
+            AppMode::CommitHistory => match self.load_commit_history(50) {
+                Ok(commit_infos) => {
+                    self.commit_history.update_commits(commit_infos);
+                    self.ensure_selected_commit_files_loaded();
+                }
+                Err(e) => {
+                    error = Some(("Failed to load commit history".to_string(), e));
+                }
+            },
             AppMode::Changes => {
                 // Refresh changes when entering the view
                 let refresh_result = self.refresh_changes_summary(true);
@@ -1498,7 +1503,6 @@ impl App {
         };
         client.list_merge_conflicts_summary()
     }
-
 
     fn refresh_changes_summary(&mut self, update_branch: bool) -> color_eyre::Result<()> {
         let (changes, branch) = match self.git_client.as_ref() {
@@ -1969,6 +1973,41 @@ impl App {
             self.selected_remote_index = Some(0);
         }
         self.selected_remote_name().map(|name| name.to_string())
+    }
+
+    fn persist_settings(&mut self) {
+        if let Some(workdir) = self.git_workdir.as_ref() {
+            if let Err(err) = self.save_settings_to(workdir) {
+                self.status_message = error(&format!("Failed to save settings: {}", err));
+            }
+        }
+    }
+
+    fn save_settings_to(&self, workdir: &std::path::Path) -> std::io::Result<()> {
+        use std::fs;
+
+        let dir = workdir.join(".forge");
+        fs::create_dir_all(&dir)?;
+        let contents = serde_json::to_string_pretty(&self.settings)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        fs::write(dir.join("settings.json"), contents)?;
+        Ok(())
+    }
+
+    fn load_settings_from(
+        &self,
+        workdir: &std::path::Path,
+    ) -> std::io::Result<Option<AppSettings>> {
+        use std::fs;
+
+        let path = workdir.join(".forge").join("settings.json");
+        if !path.exists() {
+            return Ok(None);
+        }
+        let contents = fs::read_to_string(path)?;
+        let settings = serde_json::from_str(&contents)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        Ok(Some(settings))
     }
 }
 
