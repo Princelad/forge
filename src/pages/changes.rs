@@ -15,6 +15,7 @@ pub struct ChangesParams<'a> {
     pub commit_msg: &'a str,
     pub scroll: usize,
     pub pane_ratio: u16,
+    pub remote_name: Option<&'a str>,
 }
 
 #[derive(Debug)]
@@ -54,9 +55,9 @@ impl ChangesPage {
         let mut state = create_list_state(params.selected, params.scroll, items.len());
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(format!(
-                    "Branch: {} | Space: stage/unstage | f: fetch | p: push | Ctrl+l: pull",
-                    params.project.branch
+                .block(Block::bordered().title(Self::format_title(
+                    params.project.branch.as_str(),
+                    params.remote_name,
                 )))
                 .highlight_style(ratatui::style::Style::new().reversed())
                 .highlight_symbol(">> ")
@@ -93,5 +94,13 @@ impl ChangesPage {
         };
         let staged_marker = if c.staged { "✓" } else { " " };
         format!("[{staged_marker}] [{status}] {}", c.path)
+    }
+
+    fn format_title(branch: &str, remote_name: Option<&str>) -> String {
+        let remote_label = remote_name.unwrap_or("(none)");
+        format!(
+            "Branch: {} | Remote: {} | Space: stage/unstage | f: fetch | p: push | Alt+f/p: fetch/push | Ctrl+l: pull",
+            branch, remote_label
+        )
     }
 }

@@ -35,7 +35,7 @@ pub enum Theme {
     HighContrast,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct AppSettings {
     pub theme: Theme,
     pub notifications: bool,
@@ -134,6 +134,8 @@ pub struct App {
     // Settings View State (simple, kept inline)
     // ====================================================================
     selected_setting_index: usize,
+    available_remotes: Vec<String>,
+    selected_remote_index: Option<usize>,
 }
 
 impl Default for App {
@@ -180,6 +182,8 @@ impl App {
             commit_history: CommitHistoryState::new(),
             // Settings (kept inline)
             selected_setting_index: 0,
+            available_remotes: Vec::new(),
+            selected_remote_index: None,
         };
 
         // Attempt to discover a Git repository from the current directory
@@ -230,6 +234,7 @@ impl App {
                 app.git_client = Some(client);
                 app.git_workdir = Some(workdir);
                 app.git_health = Some(health);
+                app.refresh_remotes();
                 app.ensure_change_preview_loaded(app.changes.selected_index);
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
@@ -602,6 +607,7 @@ impl App {
         );
         let workdir = self.git_workdir.as_deref();
         let pending_git_ops_count = self.pending_git_ops.len();
+        let selected_remote = self.selected_remote_name().map(|name| name.to_string());
 
         // Capture frequently used fields to avoid borrow conflicts while mutating screen
         let status_message = self.status_bar_text(pending_git_ops_count);
@@ -651,6 +657,7 @@ impl App {
             settings_options: &settings_options,
             total_projects: self.store.projects.len(),
             settings: &self.settings,
+            selected_remote,
             accepted_merge,
             workdir,
             module_manager_mode: self.module_manager.mode,
@@ -791,6 +798,7 @@ impl App {
             ),
             module_assign_mode: self.module_manager.assign_mode,
             module_input_empty: self.module_manager.is_input_empty(),
+            selected_remote: self.selected_remote_name().map(|name| name.to_string()),
         };
 
         // Process action (stateless)
@@ -1250,6 +1258,9 @@ impl App {
     fn toggle_setting(&mut self) {
         match self.selected_setting_index {
             0 => {
+                self.cycle_remote();
+            }
+            1 => {
                 // Cycle theme
                 self.settings.theme = match self.settings.theme {
                     Theme::Default => Theme::HighContrast,
@@ -1263,7 +1274,7 @@ impl App {
                     }
                 );
             }
-            1 => {
+            2 => {
                 self.settings.notifications = !self.settings.notifications;
                 self.status_message = format!(
                     "⚙ Notifications: {}",
@@ -1274,7 +1285,7 @@ impl App {
                     }
                 );
             }
-            2 => {
+            3 => {
                 self.settings.autosync = !self.settings.autosync;
                 self.status_message = format!(
                     "⚙ Autosync: {}",
@@ -1663,15 +1674,21 @@ impl App {
     }
 
     fn perform_fetch(&mut self) {
-        self.enqueue_git_operation(GitOperation::Fetch("origin".to_string()));
+        if let Some(remote) = self.ensure_remote_selected("Fetch") {
+            self.enqueue_git_operation(GitOperation::Fetch(remote));
+        }
     }
 
     fn perform_push(&mut self) {
-        self.enqueue_git_operation(GitOperation::Push("origin".to_string()));
+        if let Some(remote) = self.ensure_remote_selected("Push") {
+            self.enqueue_git_operation(GitOperation::Push(remote));
+        }
     }
 
     fn perform_pull(&mut self) {
-        self.enqueue_git_operation(GitOperation::Pull("origin".to_string()));
+        if let Some(remote) = self.ensure_remote_selected("Pull") {
+            self.enqueue_git_operation(GitOperation::Pull(remote));
+        }
     }
 
     fn perform_module_assignment(&mut self) {
@@ -1724,7 +1741,12 @@ pub enum AppMode {
 
 impl App {
     fn settings_options(&self) -> Vec<String> {
+        let remote_label = match self.selected_remote_name() {
+            Some(name) => format!("Remote: {}", name),
+            None => "Remote: (none)".to_string(),
+        };
         vec![
+            remote_label,
             format!(
                 "Theme: {}",
                 match self.settings.theme {
@@ -1745,6 +1767,65 @@ impl App {
                 if self.settings.autosync { "On" } else { "Off" }
             ),
         ]
+    }
+
+    fn refresh_remotes(&mut self) {
+        let remotes = self
+            .git_client
+            .as_ref()
+            .and_then(|client| client.list_remotes().ok())
+            .unwrap_or_default();
+        self.available_remotes = remotes;
+        self.selected_remote_index = self
+            .available_remotes
+            .iter()
+            .position(|name| name == "origin")
+            .or_else(|| {
+                if self.available_remotes.is_empty() {
+                    None
+                } else {
+                    Some(0)
+                }
+            });
+    }
+
+    fn selected_remote_name(&self) -> Option<&str> {
+        self.selected_remote_index
+            .and_then(|idx| self.available_remotes.get(idx))
+            .map(String::as_str)
+    }
+
+    fn cycle_remote(&mut self) {
+        if self.git_client.is_some() {
+            self.refresh_remotes();
+        }
+        if self.available_remotes.is_empty() {
+            self.status_message = "⚙ No remotes configured".to_string();
+            return;
+        }
+
+        let next_index = match self.selected_remote_index {
+            Some(idx) => (idx + 1) % self.available_remotes.len(),
+            None => 0,
+        };
+        self.selected_remote_index = Some(next_index);
+        if let Some(name) = self.selected_remote_name() {
+            self.status_message = format!("⚙ Remote set to {}", name);
+        }
+    }
+
+    fn ensure_remote_selected(&mut self, action: &str) -> Option<String> {
+        if self.git_client.is_some() {
+            self.refresh_remotes();
+        }
+        if self.available_remotes.is_empty() {
+            self.status_message = format!("{} failed: no remotes configured", action);
+            return None;
+        }
+        if self.selected_remote_index.is_none() {
+            self.selected_remote_index = Some(0);
+        }
+        self.selected_remote_name().map(|name| name.to_string())
     }
 }
 
