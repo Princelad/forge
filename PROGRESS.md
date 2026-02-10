@@ -25,3 +25,4 @@
 
 - Remote ops: wire fetch/push keybindings to actions.
 - Remote ops: surface remote selection (beyond hardcoded origin).
+- Merge: apply accepted pane as real conflict resolution flow.

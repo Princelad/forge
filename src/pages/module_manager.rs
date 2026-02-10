@@ -214,6 +214,12 @@ impl ModuleManager {
     }
 
     fn render_developer_form(&self, frame: &mut Frame, area: Rect, input: &str) {
-        render_input_form(frame, area, "Create New Developer", "Enter developer name", input);
+        render_input_form(
+            frame,
+            area,
+            "Create New Developer",
+            "Enter developer name",
+            input,
+        );
     }
 }
