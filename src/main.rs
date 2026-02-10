@@ -366,6 +366,37 @@ impl App {
         }
     }
 
+    fn ensure_merge_conflict_preview_loaded(&mut self, index: usize) {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return,
+        };
+
+        let path = self
+            .merge
+            .conflicts
+            .get(index)
+            .and_then(|conflict| {
+                if conflict.diff_preview == DIFF_PREVIEW_PLACEHOLDER {
+                    Some(conflict.path.clone())
+                } else {
+                    None
+                }
+            });
+
+        let Some(path) = path else {
+            return;
+        };
+
+        let (diff_preview, local_preview, incoming_preview) = client.get_change_previews(&path);
+
+        if let Some(conflict) = self.merge.conflicts.get_mut(index) {
+            conflict.diff_preview = diff_preview;
+            conflict.local_preview = local_preview;
+            conflict.incoming_preview = incoming_preview;
+        }
+    }
+
     fn ensure_selected_commit_files_loaded(&mut self) {
         let client = match self.git_client.as_ref() {
             Some(client) => client,
@@ -646,6 +677,7 @@ impl App {
             selected_board_item: self.board.selected_item,
             merge_file_index: self.merge.selected_file_index,
             merge_focus: self.merge.focus,
+            merge_conflicts: &self.merge.conflicts,
             selected_setting: self.selected_setting_index,
             show_help: self.show_help,
             project_scroll: self.dashboard.scroll,
@@ -874,7 +906,7 @@ impl App {
         }
         if let Some(idx) = update.selected_merge_file_index {
             self.merge.selected_file_index = idx;
-            self.ensure_change_preview_loaded(self.merge.selected_file_index);
+            self.ensure_merge_conflict_preview_loaded(self.merge.selected_file_index);
         }
         if let Some(idx) = update.selected_setting_index {
             self.selected_setting_index = idx;
@@ -1009,12 +1041,7 @@ impl App {
             self.merge.scroll_up(amount);
         }
         if let Some(amount) = update.merge_scroll_down {
-            let max = self
-                .store
-                .projects
-                .get(self.dashboard.selected_index)
-                .map(|p| p.changes.len())
-                .unwrap_or(0);
+            let max = self.merge.conflicts.len();
             self.merge.scroll_down(amount, max, window_size);
         }
 
@@ -1064,14 +1091,9 @@ impl App {
             self.board.navigate_right(new_len);
         }
         if update.navigate_merge_down.is_some() {
-            let max = self
-                .store
-                .projects
-                .get(self.dashboard.selected_index)
-                .map(|p| p.changes.len())
-                .unwrap_or(0);
+            let max = self.merge.conflicts.len();
             self.merge.navigate_down(max);
-            self.ensure_change_preview_loaded(self.merge.selected_file_index);
+            self.ensure_merge_conflict_preview_loaded(self.merge.selected_file_index);
         }
         if update.navigate_settings_down.is_some() {
             let max = self.settings_options().len().saturating_sub(1);
@@ -1211,7 +1233,7 @@ impl App {
         // When switching projects, ensure selections are valid for the new project
         if let Some(project) = self.store.projects.get(self.dashboard.selected_index) {
             self.changes.clamp_selection(project.changes.len());
-            self.merge.clamp_selection(project.changes.len());
+            self.merge.clamp_selection(self.merge.conflicts.len());
             let board_len = self.board_column_len(self.board.selected_column);
             self.board.clamp_selection(board_len);
         }
@@ -1245,13 +1267,82 @@ impl App {
     }
 
     fn accept_merge_pane(&mut self) {
-        if let Some(msg) = self
-            .merge
-            .accept_current_pane(self.dashboard.selected_index)
-        {
-            self.status_message = success(msg);
-        } else {
-            self.status_message = "Selected file for merge".to_string();
+        enum MergeAcceptError {
+            Status(String),
+            Git(String),
+            Abort,
+        }
+
+        let mut merge_state = std::mem::take(&mut self.merge);
+
+        let result: Result<&'static str, MergeAcceptError> = (|| {
+            if matches!(merge_state.focus, MergePaneFocus::Files) {
+                return Err(MergeAcceptError::Status(
+                    "Selected file for merge".to_string(),
+                ));
+            }
+
+            let path = merge_state
+                .conflicts
+                .get(merge_state.selected_file_index)
+                .map(|change| change.path.clone())
+                .ok_or_else(|| {
+                    MergeAcceptError::Status("No file selected for merge".to_string())
+                })?;
+
+            if !self.ensure_repo_ready() {
+                return Err(MergeAcceptError::Abort);
+            }
+
+            let side = match merge_state.focus {
+                MergePaneFocus::Local => git::ConflictSide::Ours,
+                MergePaneFocus::Incoming => git::ConflictSide::Theirs,
+                MergePaneFocus::Files => {
+                    return Err(MergeAcceptError::Status(
+                        "Selected file for merge".to_string(),
+                    ));
+                }
+            };
+
+            let resolve_error = if let Some(client) = self.git_client.take() {
+                let result = client.resolve_conflict(&path, side);
+                self.git_client = Some(client);
+                result.err().map(|e| e.to_string())
+            } else {
+                return Err(MergeAcceptError::Status(
+                    "No Git repository".to_string(),
+                ));
+            };
+
+            if let Some(err_msg) = resolve_error {
+                return Err(MergeAcceptError::Git(err_msg));
+            }
+
+            Ok(merge_state
+                .accept_current_pane(self.dashboard.selected_index)
+                .unwrap_or("Resolved merge conflict"))
+        })();
+
+        self.merge = merge_state;
+
+        match result {
+            Ok(msg) => {
+                self.status_message = success(msg);
+                if let Err(e) = self.refresh_changes_summary(false) {
+                    self.report_git_error("Failed to list changes", &e);
+                }
+                if let Err(e) = self.refresh_merge_conflicts() {
+                    self.report_git_error("Failed to list merge conflicts", &e);
+                }
+            }
+            Err(MergeAcceptError::Status(msg)) => {
+                self.status_message = msg;
+            }
+            Err(MergeAcceptError::Git(err_msg)) => {
+                let report = color_eyre::eyre::eyre!(err_msg);
+                self.report_git_error("Merge resolution failed", &report);
+            }
+            Err(MergeAcceptError::Abort) => {}
         }
     }
 
@@ -1347,83 +1438,135 @@ impl App {
         }
         let mut error: Option<(String, color_eyre::eyre::Report)> = None;
 
-        if let Some(client) = self.git_client.as_ref() {
-            match self.current_view {
-                AppMode::BranchManager => match client.list_branches_with_upstream(true, true) {
-                    Ok(branches) => {
-                        let branch_infos: Vec<BranchInfo> = branches
-                            .into_iter()
-                            .map(|(name, is_current, is_remote, upstream)| {
-                                let upstream_status =
-                                    if !is_remote {
-                                        upstream.as_ref().and_then(|_| {
-                                            client.get_ahead_behind(&name).ok().flatten().map(
-                                                |(ahead, behind)| UpstreamStatus { ahead, behind },
-                                            )
-                                        })
-                                    } else {
-                                        None
-                                    };
-
-                                BranchInfo {
-                                    name,
-                                    is_current,
-                                    is_remote,
-                                    upstream,
-                                    upstream_status,
-                                }
-                            })
-                            .collect();
+        match self.current_view {
+            AppMode::BranchManager => {
+                match self.load_branch_infos() {
+                    Ok(branch_infos) => {
                         self.branch_manager.update_branches(branch_infos);
                     }
                     Err(e) => {
                         error = Some(("Failed to list branches".to_string(), e));
                     }
-                },
-                AppMode::CommitHistory => match client.get_commit_history_summary(50) {
-                    Ok(commits) => {
-                        let commit_infos: Vec<CommitInfo> = commits
-                            .into_iter()
-                            .map(|(hash, author, date, message, files)| CommitInfo {
-                                hash,
-                                author,
-                                date,
-                                message,
-                                files_changed: files,
-                                files_loaded: false,
-                            })
-                            .collect();
+                }
+            }
+            AppMode::CommitHistory => {
+                match self.load_commit_history(50) {
+                    Ok(commit_infos) => {
                         self.commit_history.update_commits(commit_infos);
                         self.ensure_selected_commit_files_loaded();
                     }
                     Err(e) => {
                         error = Some(("Failed to load commit history".to_string(), e));
                     }
-                },
-                AppMode::Changes => {
-                    // Refresh changes when entering the view
-                    match client.list_changes_summary() {
-                        Ok(changes) => {
-                            if let Some(project) =
-                                self.store.projects.get_mut(self.dashboard.selected_index)
-                            {
-                                project.changes = changes;
-                                project.branch = client.head_branch().unwrap_or_default();
-                            }
-                            self.ensure_change_preview_loaded(self.changes.selected_index);
-                        }
-                        Err(e) => {
-                            error = Some(("Failed to list changes".to_string(), e));
-                        }
-                    }
                 }
-                _ => {}
+            }
+            AppMode::Changes => {
+                // Refresh changes when entering the view
+                let refresh_result = self.refresh_changes_summary(true);
+                if let Err(e) = refresh_result {
+                    error = Some(("Failed to list changes".to_string(), e));
+                } else {
+                    self.ensure_change_preview_loaded(self.changes.selected_index);
+                }
+            }
+            _ => {}
+        }
+
+        if matches!(self.current_view, AppMode::MergeVisualizer) {
+            if let Err(e) = self.refresh_merge_conflicts() {
+                error = Some(("Failed to list merge conflicts".to_string(), e));
             }
         }
 
         if let Some((context, err)) = error {
             self.report_git_error(&context, &err);
         }
+    }
+
+    fn refresh_merge_conflicts(&mut self) -> color_eyre::Result<()> {
+        let conflicts = self.get_merge_conflicts()?;
+        self.merge.conflicts = conflicts;
+        self.merge.clamp_selection(self.merge.conflicts.len());
+        self.ensure_merge_conflict_preview_loaded(self.merge.selected_file_index);
+        Ok(())
+    }
+
+    fn get_merge_conflicts(&self) -> color_eyre::Result<Vec<crate::data::Change>> {
+        let client = match self.git_client.as_ref() {
+            Some(client) => client,
+            None => return Ok(Vec::new()),
+        };
+        client.list_merge_conflicts_summary()
+    }
+
+
+    fn refresh_changes_summary(&mut self, update_branch: bool) -> color_eyre::Result<()> {
+        let (changes, branch) = match self.git_client.as_ref() {
+            Some(client) => (client.list_changes_summary()?, client.head_branch()),
+            None => return Ok(()),
+        };
+
+        if let Some(project) = self.store.projects.get_mut(self.dashboard.selected_index) {
+            project.changes = changes;
+            if update_branch {
+                project.branch = branch.unwrap_or_default();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn load_branch_infos(&self) -> color_eyre::Result<Vec<BranchInfo>> {
+        let client = self
+            .git_client
+            .as_ref()
+            .ok_or_else(|| color_eyre::eyre::eyre!("No Git repository"))?;
+        let branches = client.list_branches_with_upstream(true, true)?;
+        let branch_infos = branches
+            .into_iter()
+            .map(|(name, is_current, is_remote, upstream)| {
+                let upstream_status = if !is_remote {
+                    upstream.as_ref().and_then(|_| {
+                        client
+                            .get_ahead_behind(&name)
+                            .ok()
+                            .flatten()
+                            .map(|(ahead, behind)| UpstreamStatus { ahead, behind })
+                    })
+                } else {
+                    None
+                };
+
+                BranchInfo {
+                    name,
+                    is_current,
+                    is_remote,
+                    upstream,
+                    upstream_status,
+                }
+            })
+            .collect();
+
+        Ok(branch_infos)
+    }
+
+    fn load_commit_history(&self, limit: usize) -> color_eyre::Result<Vec<CommitInfo>> {
+        let client = self
+            .git_client
+            .as_ref()
+            .ok_or_else(|| color_eyre::eyre::eyre!("No Git repository"))?;
+        let commits = client.get_commit_history_summary(limit)?;
+        Ok(commits
+            .into_iter()
+            .map(|(hash, author, date, message, files)| CommitInfo {
+                hash,
+                author,
+                date,
+                message,
+                files_changed: files,
+                files_loaded: false,
+            })
+            .collect())
     }
 
     fn perform_branch_switch(&mut self) {

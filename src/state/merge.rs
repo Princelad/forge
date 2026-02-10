@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use crate::data::Change;
 use crate::pages::merge_visualizer::MergePaneFocus;
 
 /// State for the Merge Visualizer view.
@@ -17,6 +18,8 @@ pub struct MergeState {
     pub focus: MergePaneFocus,
     /// Scroll offset for the file list.
     pub scroll: usize,
+    /// Current merge conflict entries for the active project.
+    pub conflicts: Vec<Change>,
     /// Map of (project_index, file_index) -> accepted pane for resolutions.
     pub resolutions: HashMap<(usize, usize), MergePaneFocus>,
 }
@@ -28,6 +31,7 @@ impl MergeState {
             selected_file_index: 0,
             focus: MergePaneFocus::Files,
             scroll: 0,
+            conflicts: Vec::new(),
             resolutions: HashMap::new(),
         }
     }

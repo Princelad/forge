@@ -33,6 +33,7 @@
 //! - UI should never panic on Git errors - display errors in status bar instead
 //! - Benchmark code tracks errors via `is_err()` checks (see benches/git_operations.rs)
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -63,6 +64,12 @@ pub enum RepoHealthStatus {
     Healthy,
     Warning,
     Unhealthy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictSide {
+    Ours,
+    Theirs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -363,6 +370,48 @@ impl GitClient {
         Ok(changes)
     }
 
+    /// List merge conflict entries from the index without computing previews.
+    pub fn list_merge_conflicts_summary(&self) -> Result<Vec<Change>> {
+        let index = self.repo.index()?;
+        if !index.has_conflicts() {
+            return Ok(Vec::new());
+        }
+
+        let conflicts = index.conflicts()?;
+        let mut changes = Vec::new();
+        let mut seen = HashSet::new();
+
+        for conflict in conflicts {
+            let conflict = conflict?;
+            let path = conflict
+                .our
+                .as_ref()
+                .or(conflict.their.as_ref())
+                .or(conflict.ancestor.as_ref())
+                .and_then(|entry| std::str::from_utf8(&entry.path).ok())
+                .map(|s| s.to_string());
+
+            let Some(path) = path else {
+                continue;
+            };
+
+            if !seen.insert(path.clone()) {
+                continue;
+            }
+
+            changes.push(Change {
+                path,
+                status: FileStatus::Modified,
+                diff_preview: "(diff not loaded)".into(),
+                local_preview: None,
+                incoming_preview: None,
+                staged: false,
+            });
+        }
+
+        Ok(changes)
+    }
+
     /// Compute diff previews for a single path.
     pub fn get_change_previews(&self, path: &str) -> (String, Option<String>, Option<String>) {
         let local_preview = self
@@ -453,6 +502,67 @@ impl GitClient {
     pub fn stage_file(&self, path: &str) -> Result<()> {
         let mut index = self.repo.index()?;
         index.add_path(std::path::Path::new(path))?;
+        index.write()?;
+        Ok(())
+    }
+
+    pub fn resolve_conflict(&self, path: &str, side: ConflictSide) -> Result<()> {
+        let mut index = self.repo.index()?;
+        if !index.has_conflicts() {
+            return Err(color_eyre::eyre::eyre!(
+                "No merge conflicts detected in index"
+            ));
+        }
+
+        let mut target = None;
+        let conflicts = index.conflicts()?;
+        for conflict in conflicts {
+            let conflict = conflict?;
+            let candidate = conflict
+                .our
+                .as_ref()
+                .or(conflict.their.as_ref())
+                .or(conflict.ancestor.as_ref())
+                .and_then(|entry| std::str::from_utf8(&entry.path).ok())
+                .map(|s| s.to_string());
+            if candidate.as_deref() == Some(path) {
+                target = Some(conflict);
+                break;
+            }
+        }
+
+        let conflict = target
+            .ok_or_else(|| color_eyre::eyre::eyre!("No merge conflict entry found for {}", path))?;
+
+        let chosen = match side {
+            ConflictSide::Ours => conflict.our,
+            ConflictSide::Theirs => conflict.their,
+        };
+
+        let path_obj = std::path::Path::new(path);
+        index.conflict_remove(path_obj)?;
+
+        match chosen {
+            Some(entry) => {
+                let blob = self.repo.find_blob(entry.id)?;
+                let abs_path = self.workdir.join(path_obj);
+                if let Some(parent) = abs_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&abs_path, blob.content())?;
+                index.add_path(path_obj)?;
+            }
+            None => {
+                let abs_path = self.workdir.join(path_obj);
+                if abs_path.exists() {
+                    std::fs::remove_file(&abs_path)?;
+                }
+                if index.get_path(path_obj, 0).is_some() {
+                    index.remove_path(path_obj)?;
+                }
+            }
+        }
+
         index.write()?;
         Ok(())
     }
