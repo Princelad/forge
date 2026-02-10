@@ -17,8 +17,6 @@
 - Integration tests: repo fixture helpers.
 - Integration tests: core Git ops (status, stage, commit).
 
-- Ongoing:
-
 - Completed:
 
 - Remote ops: wire fetch/push keybindings to actions.
