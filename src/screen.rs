@@ -40,6 +40,7 @@ pub struct RenderContext<'a> {
     pub selected_board_item: usize,
     pub merge_file_index: usize,
     pub merge_focus: crate::pages::merge_visualizer::MergePaneFocus,
+    pub merge_conflicts: &'a [crate::data::Change],
     pub selected_setting: usize,
     pub show_help: bool,
     pub project_scroll: usize,
@@ -222,10 +223,10 @@ impl Screen {
             }
             AppMode::MergeVisualizer => {
                 let proj = ctx.store.projects.get(ctx.selected_project);
-                if let Some(p) = proj {
+                if proj.is_some() {
                     let params = crate::pages::merge_visualizer::MergeVisualizerParams {
                         area: content_area,
-                        project: p,
+                        conflicts: ctx.merge_conflicts,
                         selected_file: ctx.merge_file_index,
                         pane_focus: ctx.merge_focus,
                         scroll: ctx.merge_scroll,

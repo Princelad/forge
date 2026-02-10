@@ -33,6 +33,7 @@
 //! - UI should never panic on Git errors - display errors in status bar instead
 //! - Benchmark code tracks errors via `is_err()` checks (see benches/git_operations.rs)
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -363,6 +364,48 @@ impl GitClient {
                 local_preview: None,
                 incoming_preview: None,
                 staged,
+            });
+        }
+
+        Ok(changes)
+    }
+
+    /// List merge conflict entries from the index without computing previews.
+    pub fn list_merge_conflicts_summary(&self) -> Result<Vec<Change>> {
+        let index = self.repo.index()?;
+        if !index.has_conflicts() {
+            return Ok(Vec::new());
+        }
+
+        let conflicts = index.conflicts()?;
+        let mut changes = Vec::new();
+        let mut seen = HashSet::new();
+
+        for conflict in conflicts {
+            let conflict = conflict?;
+            let path = conflict
+                .our
+                .as_ref()
+                .or(conflict.their.as_ref())
+                .or(conflict.ancestor.as_ref())
+                .and_then(|entry| std::str::from_utf8(&entry.path).ok())
+                .map(|s| s.to_string());
+
+            let Some(path) = path else {
+                continue;
+            };
+
+            if !seen.insert(path.clone()) {
+                continue;
+            }
+
+            changes.push(Change {
+                path,
+                status: FileStatus::Modified,
+                diff_preview: "(diff not loaded)".into(),
+                local_preview: None,
+                incoming_preview: None,
+                staged: false,
             });
         }
 
