@@ -1245,13 +1245,63 @@ impl App {
     }
 
     fn accept_merge_pane(&mut self) {
-        if let Some(msg) = self
-            .merge
-            .accept_current_pane(self.dashboard.selected_index)
-        {
-            self.status_message = success(msg);
-        } else {
+        let focus = self.merge.focus;
+        if matches!(focus, MergePaneFocus::Files) {
             self.status_message = "Selected file for merge".to_string();
+            return;
+        }
+
+        let path = self
+            .store
+            .projects
+            .get(self.dashboard.selected_index)
+            .and_then(|project| project.changes.get(self.merge.selected_file_index))
+            .map(|change| change.path.clone());
+
+        let Some(path) = path else {
+            self.status_message = "No file selected for merge".to_string();
+            return;
+        };
+
+        if self.git_client.is_none() {
+            self.status_message = "No Git repository".to_string();
+            return;
+        }
+
+        if !self.ensure_repo_ready() {
+            return;
+        }
+
+        let side = match focus {
+            MergePaneFocus::Local => git::ConflictSide::Ours,
+            MergePaneFocus::Incoming => git::ConflictSide::Theirs,
+            MergePaneFocus::Files => {
+                self.status_message = "Selected file for merge".to_string();
+                return;
+            }
+        };
+
+        let client = self.git_client.as_ref().unwrap();
+        match client.resolve_conflict(&path, side) {
+            Ok(()) => {
+                let msg = self
+                    .merge
+                    .accept_current_pane(self.dashboard.selected_index)
+                    .unwrap_or("Resolved merge conflict");
+                self.status_message = success(msg);
+                if let Ok(changes) = client.list_changes_summary() {
+                    if let Some(project) =
+                        self.store.projects.get_mut(self.dashboard.selected_index)
+                    {
+                        project.changes = changes;
+                        self.merge.clamp_selection(project.changes.len());
+                    }
+                }
+                self.ensure_change_preview_loaded(self.merge.selected_file_index);
+            }
+            Err(e) => {
+                self.report_git_error("Merge resolution failed", &e);
+            }
         }
     }
 

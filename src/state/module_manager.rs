@@ -212,7 +212,9 @@ impl ModuleManagerState {
     /// Resets selections to valid ranges.
     pub fn clamp_selections(&mut self, max_modules: usize, max_developers: usize) {
         self.selected_module = self.selected_module.min(max_modules.saturating_sub(1));
-        self.selected_developer = self.selected_developer.min(max_developers.saturating_sub(1));
+        self.selected_developer = self
+            .selected_developer
+            .min(max_developers.saturating_sub(1));
     }
 }
 
@@ -234,7 +236,7 @@ mod tests {
     #[test]
     fn test_toggle_list() {
         let mut state = ModuleManagerState::new();
-        
+
         assert!(!state.is_developer_list());
         state.toggle_list();
         assert!(state.is_developer_list());
@@ -246,9 +248,9 @@ mod tests {
     fn test_enter_create_module() {
         let mut state = ModuleManagerState::new();
         state.input_buffer = "existing".to_string();
-        
+
         state.enter_create_module();
-        
+
         assert!(matches!(state.mode, ModuleManagerMode::CreateModule));
         assert!(state.input_buffer.is_empty());
         assert!(state.is_create_mode());
@@ -257,9 +259,9 @@ mod tests {
     #[test]
     fn test_enter_create_developer() {
         let mut state = ModuleManagerState::new();
-        
+
         state.enter_create_developer();
-        
+
         assert!(matches!(state.mode, ModuleManagerMode::CreateDeveloper));
         assert!(state.is_create_mode());
     }
@@ -268,9 +270,9 @@ mod tests {
     fn test_enter_edit_module() {
         let mut state = ModuleManagerState::new();
         let module_id = uuid::Uuid::new_v4();
-        
+
         state.enter_edit_module(module_id, "Test Module");
-        
+
         assert!(state.is_edit_mode());
         assert_eq!(state.editing_module_id, Some(module_id));
         assert_eq!(state.input_buffer, "Test Module");
@@ -281,9 +283,9 @@ mod tests {
         let mut state = ModuleManagerState::new();
         state.mode = ModuleManagerMode::CreateModule;
         state.input_buffer = "test".to_string();
-        
+
         state.exit_current_mode();
-        
+
         assert!(matches!(state.mode, ModuleManagerMode::ModuleList));
         assert!(state.input_buffer.is_empty());
     }
@@ -292,9 +294,9 @@ mod tests {
     fn test_exit_current_mode_from_create_developer() {
         let mut state = ModuleManagerState::new();
         state.mode = ModuleManagerMode::CreateDeveloper;
-        
+
         state.exit_current_mode();
-        
+
         assert!(matches!(state.mode, ModuleManagerMode::DeveloperList));
     }
 
@@ -304,7 +306,7 @@ mod tests {
             selected_module: 3,
             ..Default::default()
         };
-        
+
         assert!(state.navigate_up());
         assert_eq!(state.selected_module, 2);
     }
@@ -312,7 +314,7 @@ mod tests {
     #[test]
     fn test_navigate_up_at_top() {
         let mut state = ModuleManagerState::new();
-        
+
         assert!(!state.navigate_up());
         assert_eq!(state.selected_module, 0);
     }
@@ -324,7 +326,7 @@ mod tests {
             selected_developer: 3,
             ..Default::default()
         };
-        
+
         assert!(state.navigate_up());
         assert_eq!(state.selected_developer, 2);
     }
@@ -335,7 +337,7 @@ mod tests {
             selected_module: 3,
             ..Default::default()
         };
-        
+
         assert!(state.navigate_down(10, 5));
         assert_eq!(state.selected_module, 4);
     }
@@ -346,7 +348,7 @@ mod tests {
             selected_module: 9,
             ..Default::default()
         };
-        
+
         assert!(!state.navigate_down(10, 5));
         assert_eq!(state.selected_module, 9);
     }
@@ -354,17 +356,17 @@ mod tests {
     #[test]
     fn test_input_operations() {
         let mut state = ModuleManagerState::new();
-        
+
         assert!(state.is_input_empty());
-        
+
         state.append_input_char('H');
         state.append_input_char('i');
         assert_eq!(state.input_buffer, "Hi");
         assert!(!state.is_input_empty());
-        
+
         assert!(state.pop_input_char());
         assert_eq!(state.input_buffer, "H");
-        
+
         state.clear_input();
         assert!(state.is_input_empty());
     }
@@ -373,7 +375,7 @@ mod tests {
     fn test_whitespace_is_empty() {
         let mut state = ModuleManagerState::new();
         state.input_buffer = "   ".to_string();
-        
+
         assert!(state.is_input_empty());
         assert_eq!(state.get_input_value(), "");
     }
@@ -381,10 +383,10 @@ mod tests {
     #[test]
     fn test_adjust_pane_ratio() {
         let mut state = ModuleManagerState::new();
-        
+
         let ratio = state.adjust_pane_ratio(10);
         assert_eq!(ratio, 60);
-        
+
         let ratio = state.adjust_pane_ratio(-20);
         assert_eq!(ratio, 40);
     }
@@ -396,7 +398,7 @@ mod tests {
             selected_developer: 10,
             ..Default::default()
         };
-        
+
         state.clamp_selections(5, 3);
         assert_eq!(state.selected_module, 4);
         assert_eq!(state.selected_developer, 2);
@@ -405,7 +407,7 @@ mod tests {
     #[test]
     fn test_assign_mode() {
         let mut state = ModuleManagerState::new();
-        
+
         assert!(!state.assign_mode);
         state.enter_assign_mode();
         assert!(state.assign_mode);
