@@ -51,6 +51,7 @@ pub struct RenderContext<'a> {
     pub settings_options: &'a [String],
     pub total_projects: usize,
     pub settings: &'a AppSettings,
+    pub selected_remote: Option<String>,
     pub accepted_merge: Option<crate::pages::merge_visualizer::MergePaneFocus>,
     pub workdir: Option<&'a std::path::Path>,
     pub module_manager_mode: crate::pages::module_manager::ModuleManagerMode,
@@ -193,6 +194,7 @@ impl Screen {
                         commit_msg: ctx.commit_msg,
                         scroll: ctx.changes_scroll,
                         pane_ratio: ctx.changes_pane_ratio,
+                        remote_name: ctx.selected_remote.as_deref(),
                     };
                     self.changes.render(frame, params);
                 }

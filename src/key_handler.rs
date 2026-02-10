@@ -131,6 +131,7 @@ pub struct ActionContext {
     pub developer_create_mode: bool,
     pub module_assign_mode: bool,
     pub module_input_empty: bool,
+    pub selected_remote: Option<String>,
 }
 
 /// Stateless action processor: takes action + context, returns result + modified state
@@ -384,20 +385,28 @@ impl ActionProcessor {
                         'f' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Fetching from origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Fetching from {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                fetch_requested: Some(()),
+                                fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
                         'p' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Pushing to origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Pushing to {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                push_requested: Some(()),
+                                push_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
@@ -416,10 +425,14 @@ impl ActionProcessor {
                         'f' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Fetching from origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Fetching from {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                fetch_requested: Some(()),
+                                fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
@@ -892,10 +905,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Fetching from origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Fetching from {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            fetch_requested: Some(()),
+                            fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
@@ -914,10 +931,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Pushing to origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Pushing to {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            push_requested: Some(()),
+                            push_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
@@ -936,10 +957,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Pulling from origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Pulling from {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            pull_requested: Some(()),
+                            pull_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
