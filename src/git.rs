@@ -743,6 +743,13 @@ impl GitClient {
         Ok(())
     }
 
+    /// Drop a stash entry without applying it.
+    pub fn drop_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        repo.stash_drop(index)?;
+        Ok(())
+    }
+
     /// List all branches (local and remote)
     pub fn list_branches(&self, local: bool, remote: bool) -> Result<Vec<(String, bool)>> {
         let mut branches = Vec::new();

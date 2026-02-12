@@ -854,6 +854,24 @@ impl ActionProcessor {
                                 ..Default::default()
                             },
                         ),
+                        'd' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to drop".into()
+                                } else {
+                                    "Dropping stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_drop_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
                         _ => (
                             ActionResult {
                                 should_quit: false,
@@ -2050,6 +2068,7 @@ pub struct ActionStateUpdate {
     pub stash_create_mode: Option<bool>,
     pub stash_apply_requested: Option<()>,
     pub stash_pop_requested: Option<()>,
+    pub stash_drop_requested: Option<()>,
 
     // Commands
     pub move_board_item: Option<()>,
