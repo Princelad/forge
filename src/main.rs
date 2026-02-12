@@ -839,7 +839,10 @@ impl App {
                 if self.stashes.is_create_mode() {
                     format!("Stashes: {} (↵ Confirm, Esc Cancel)", count)
                 } else {
-                    format!("Stashes: {} (↑↓ Select, n New, a Apply, p Pop)", count)
+                    format!(
+                        "Stashes: {} (↑↓ Select, n New, a Apply, p Pop, d Drop)",
+                        count
+                    )
                 }
             }
             AppMode::BranchManager => {
@@ -1254,6 +1257,9 @@ impl App {
         }
         if update.stash_pop_requested.is_some() {
             self.perform_stash_pop();
+        }
+        if update.stash_drop_requested.is_some() {
+            self.perform_stash_drop();
         }
 
         // Branch operations
@@ -1893,6 +1899,34 @@ impl App {
                 }
                 Err(e) => {
                     self.report_git_error("Failed to pop stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_drop(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.drop_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Dropped stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to drop stash", &e);
                 }
             }
         }
