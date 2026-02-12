@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Stash: create stash with message.
 - Stash: apply and pop stash.
 - Stash: drop stash entry.
 - Cherry-pick: single commit flow.
@@ -24,3 +23,4 @@
 - Keybindings: validate and report errors.
 - Keybindings: detect conflicting bindings across actions.
 - Stash: list existing stashes.
+- Stash: create stash with message.
