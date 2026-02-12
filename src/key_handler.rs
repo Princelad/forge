@@ -818,6 +818,42 @@ impl ActionProcessor {
                                 ..Default::default()
                             },
                         ),
+                        'a' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to apply".into()
+                                } else {
+                                    "Applying stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_apply_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
+                        'p' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to pop".into()
+                                } else {
+                                    "Popping stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_pop_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
                         _ => (
                             ActionResult {
                                 should_quit: false,
@@ -2012,6 +2048,8 @@ pub struct ActionStateUpdate {
 
     // Stash create
     pub stash_create_mode: Option<bool>,
+    pub stash_apply_requested: Option<()>,
+    pub stash_pop_requested: Option<()>,
 
     // Commands
     pub move_board_item: Option<()>,

@@ -40,8 +40,8 @@ use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use git2::{
-    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StashFlags,
-    StatusOptions, Tree,
+    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StashApplyOptions,
+    StashFlags, StatusOptions, Tree,
 };
 
 use crate::data::{Change, FileStatus};
@@ -724,6 +724,23 @@ impl GitClient {
         let mut repo = Repository::open(self.repo.path())?;
         let oid = repo.stash_save(&sig, message, Some(StashFlags::DEFAULT))?;
         Ok(oid)
+    }
+
+    /// Apply a stash without dropping it.
+    pub fn apply_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        let mut options = StashApplyOptions::new();
+        repo.stash_apply(index, Some(&mut options))?;
+        Ok(())
+    }
+
+    /// Apply a stash and drop it from the list.
+    pub fn pop_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        let mut options = StashApplyOptions::new();
+        repo.stash_apply(index, Some(&mut options))?;
+        repo.stash_drop(index)?;
+        Ok(())
     }
 
     /// List all branches (local and remote)

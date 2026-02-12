@@ -114,7 +114,7 @@ impl StashesPage {
         let mut state = create_list_state(selected, scroll, items.len());
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title("Stashes | n New"))
+                .block(Block::bordered().title("Stashes | n New, a Apply, p Pop"))
                 .highlight_style(Style::new().reversed())
                 .highlight_symbol(">> "),
             area,
