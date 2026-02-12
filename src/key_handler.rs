@@ -418,6 +418,8 @@ pub struct ActionContext {
     pub cached_stashes_len: usize,
     pub branch_create_mode: bool,
     pub branch_input_empty: bool,
+    pub stash_create_mode: bool,
+    pub stash_input_empty: bool,
     pub module_manager_in_developer_list: bool,
     pub module_create_mode: bool,
     pub module_edit_mode: bool,
@@ -498,6 +500,19 @@ impl ActionProcessor {
                         ActionStateUpdate {
                             branch_create_mode: Some(false),
                             branch_input_clear: Some(()),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if ctx.stash_create_mode {
+                    return (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Cancelled stash creation".into()),
+                        },
+                        ActionStateUpdate {
+                            stash_create_mode: Some(false),
+                            stash_input_clear: Some(()),
                             ..Default::default()
                         },
                     );
@@ -645,6 +660,22 @@ impl ActionProcessor {
                     }
 
                     if ctx.focus == Focus::View
+                        && matches!(ctx.current_view, AppMode::Stashes)
+                        && ctx.stash_create_mode
+                    {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                stash_input_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+
+                    if ctx.focus == Focus::View
                         && matches!(ctx.current_view, AppMode::ModuleManager)
                         && (ctx.module_create_mode
                             || ctx.module_edit_mode
@@ -760,6 +791,30 @@ impl ActionProcessor {
                             },
                             ActionStateUpdate {
                                 branch_delete_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Stashes) {
+                    return match c {
+                        'n' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(
+                                    "Press Enter to start typing a stash message".into(),
+                                ),
+                            },
+                            ActionStateUpdate {
+                                stash_create_mode: Some(true),
                                 ..Default::default()
                             },
                         ),
@@ -922,6 +977,21 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             branch_input_pop: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.input_mode == InputMode::Typing
+                    && ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::Stashes)
+                    && ctx.stash_create_mode
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            stash_input_pop: Some(()),
                             ..Default::default()
                         },
                     )
@@ -1420,6 +1490,49 @@ impl ActionProcessor {
                     ..Default::default()
                 },
             )
+        } else if matches!(ctx.current_view, AppMode::Stashes) {
+            if ctx.stash_create_mode {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing a stash message".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.stash_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Stash message cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Creating stash...".into()),
+                        },
+                        ActionStateUpdate {
+                            stash_create_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: None,
+                    },
+                    ActionStateUpdate::none(),
+                )
+            }
         } else if matches!(ctx.current_view, AppMode::BranchManager) {
             if ctx.branch_create_mode {
                 if ctx.input_mode == InputMode::Normal {
@@ -1866,6 +1979,9 @@ pub struct ActionStateUpdate {
     pub commit_message_append: Option<char>,
     pub commit_message_pop: Option<()>,
     pub commit_message_clear: Option<()>,
+    pub stash_input_append: Option<char>,
+    pub stash_input_pop: Option<()>,
+    pub stash_input_clear: Option<()>,
 
     // Scroll state
     pub project_scroll_up: Option<usize>,
@@ -1894,11 +2010,15 @@ pub struct ActionStateUpdate {
     pub merge_focus_prev: Option<()>,
     pub navigate_settings_down: Option<()>,
 
+    // Stash create
+    pub stash_create_mode: Option<bool>,
+
     // Commands
     pub move_board_item: Option<()>,
     pub accept_merge_pane: Option<()>,
     pub toggle_setting: Option<()>,
     pub commit_requested: Option<()>,
+    pub stash_create_requested: Option<()>,
 
     // Branch operations
     pub branch_create_mode: Option<bool>,

@@ -789,6 +789,8 @@ impl App {
             selected_stash: self.stashes.selected_index,
             stash_scroll: self.stashes.scroll,
             cached_stashes: &self.stashes.cached_stashes,
+            stash_mode: self.stashes.mode,
+            stash_input_buffer: &self.stashes.input_buffer,
             pending_git_ops_count,
         };
 
@@ -834,7 +836,11 @@ impl App {
             }
             AppMode::Stashes => {
                 let count = self.stashes.cached_stashes.len();
-                format!("Stashes: {} (↑↓ Select)", count)
+                if self.stashes.is_create_mode() {
+                    format!("Stashes: {} (↵ Confirm, Esc Cancel)", count)
+                } else {
+                    format!("Stashes: {} (↑↓ Select, n New)", count)
+                }
             }
             AppMode::BranchManager => {
                 let count = self.branch_manager.cached_branches.len();
@@ -910,6 +916,8 @@ impl App {
             cached_stashes_len: self.stashes.cached_stashes.len(),
             branch_create_mode: matches!(self.branch_manager.mode, BranchManagerMode::CreateBranch),
             branch_input_empty: self.branch_manager.is_input_empty(),
+            stash_create_mode: self.stashes.is_create_mode(),
+            stash_input_empty: self.stashes.is_input_empty(),
             module_manager_in_developer_list: self.module_manager.is_developer_list(),
             module_create_mode: matches!(self.module_manager.mode, ModuleManagerMode::CreateModule),
             module_edit_mode: matches!(self.module_manager.mode, ModuleManagerMode::EditModule),
@@ -1024,6 +1032,22 @@ impl App {
             } else if self.stashes.selected_index >= self.stashes.scroll + window_size {
                 self.stashes.scroll = self.stashes.selected_index.saturating_sub(window_size - 1);
             }
+        }
+        if let Some(mode) = update.stash_create_mode {
+            if mode {
+                self.stashes.enter_create_mode();
+            } else {
+                self.stashes.exit_create_mode();
+            }
+        }
+        if let Some(c) = update.stash_input_append {
+            self.stashes.append_input_char(c);
+        }
+        if update.stash_input_pop.is_some() {
+            self.stashes.pop_input_char();
+        }
+        if update.stash_input_clear.is_some() {
+            self.stashes.clear_input();
         }
         if let Some(idx) = update.selected_branch_index {
             self.branch_manager.selected_index =
@@ -1221,6 +1245,9 @@ impl App {
         }
         if update.commit_requested.is_some() {
             self.perform_commit();
+        }
+        if update.stash_create_requested.is_some() {
+            self.perform_stash_create();
         }
 
         // Branch operations
@@ -1777,6 +1804,28 @@ impl App {
                     Err(e) => {
                         self.report_git_error("Failed to delete branch", &e);
                     }
+                }
+            }
+        }
+    }
+
+    fn perform_stash_create(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let message = self.stashes.get_input_value().to_string();
+        if let Some(client) = &self.git_client {
+            match client.create_stash(&message) {
+                Ok(_oid) => {
+                    self.status_message = success(&format!("Created stash: {}", message));
+                    self.stashes.exit_create_mode();
+                    self.refresh_view_cache();
+                    if let Err(e) = self.refresh_changes_summary(true) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to create stash", &e);
                 }
             }
         }
