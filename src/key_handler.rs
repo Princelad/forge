@@ -410,10 +410,12 @@ pub struct ActionContext {
     // New view indices
     pub selected_commit_index: usize,
     pub selected_branch_index: usize,
+    pub selected_stash_index: usize,
     pub selected_module_index: usize,
     pub selected_developer_index: usize,
     pub cached_commits_len: usize,
     pub cached_branches_len: usize,
+    pub cached_stashes_len: usize,
     pub branch_create_mode: bool,
     pub branch_input_empty: bool,
     pub module_manager_in_developer_list: bool,
@@ -1624,6 +1626,10 @@ impl ActionProcessor {
                     selected_commit_index: Some(ctx.selected_commit_index.saturating_sub(1)),
                     ..Default::default()
                 },
+                AppMode::Stashes => ActionStateUpdate {
+                    selected_stash_index: Some(ctx.selected_stash_index.saturating_sub(1)),
+                    ..Default::default()
+                },
                 AppMode::BranchManager => ActionStateUpdate {
                     selected_branch_index: Some(ctx.selected_branch_index.saturating_sub(1)),
                     ..Default::default()
@@ -1698,6 +1704,16 @@ impl ActionProcessor {
                     if ctx.selected_commit_index < ctx.cached_commits_len.saturating_sub(1) {
                         ActionStateUpdate {
                             selected_commit_index: Some(ctx.selected_commit_index + 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
+                AppMode::Stashes => {
+                    if ctx.selected_stash_index < ctx.cached_stashes_len.saturating_sub(1) {
+                        ActionStateUpdate {
+                            selected_stash_index: Some(ctx.selected_stash_index + 1),
                             ..Default::default()
                         }
                     } else {
@@ -1842,6 +1858,7 @@ pub struct ActionStateUpdate {
     // New view selections
     pub selected_commit_index: Option<usize>,
     pub selected_branch_index: Option<usize>,
+    pub selected_stash_index: Option<usize>,
     pub selected_module_index: Option<usize>,
     pub selected_developer_index: Option<usize>,
 

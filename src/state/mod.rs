@@ -16,7 +16,8 @@
 //! ├── MergeState          - Conflict resolution state
 //! ├── ModuleManagerState  - Module/developer management
 //! ├── BranchManagerState  - Branch operations
-//! └── CommitHistoryState  - Commit history navigation
+//! ├── CommitHistoryState  - Commit history navigation
+//! └── StashesState        - Stash list navigation
 //! ```
 
 mod board;
@@ -26,6 +27,7 @@ mod commit_history;
 mod dashboard;
 mod merge;
 mod module_manager;
+mod stashes;
 
 pub use board::BoardState;
 pub use branch_manager::BranchManagerState;
@@ -34,3 +36,4 @@ pub use commit_history::CommitHistoryState;
 pub use dashboard::DashboardState;
 pub use merge::MergeState;
 pub use module_manager::ModuleManagerState;
+pub use stashes::StashesState;
