@@ -2,10 +2,6 @@
 
 - Pending:
 
-- Stash: list existing stashes.
-- Stash: create stash with message.
-- Stash: apply and pop stash.
-- Stash: drop stash entry.
 - Cherry-pick: single commit flow.
 - Cherry-pick: conflict handling UX.
 - Troubleshooting guide: common Git errors.
@@ -24,3 +20,7 @@
 - Keybindings: load config file (TOML).
 - Keybindings: validate and report errors.
 - Keybindings: detect conflicting bindings across actions.
+- Stash: list existing stashes.
+- Stash: create stash with message.
+- Stash: apply and pop stash.
+- Stash: drop stash entry.

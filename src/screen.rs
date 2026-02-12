@@ -17,6 +17,7 @@ use crate::pages::merge_visualizer::MergeVisualizer;
 use crate::pages::module_manager::ModuleManager;
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
+use crate::pages::stashes::StashesPage;
 use crate::{AppMode, AppSettings, Focus, Theme};
 
 /// Context for rendering the UI
@@ -69,6 +70,11 @@ pub struct RenderContext<'a> {
     pub selected_commit: usize,
     pub commit_scroll: usize,
     pub cached_commits: &'a [crate::pages::commit_history::CommitInfo],
+    pub selected_stash: usize,
+    pub stash_scroll: usize,
+    pub cached_stashes: &'a [crate::pages::stashes::StashInfo],
+    pub stash_mode: crate::pages::stashes::StashesMode,
+    pub stash_input_buffer: &'a str,
     pub pending_git_ops_count: usize,
 }
 
@@ -78,6 +84,7 @@ pub struct Screen {
     dashboard: Dashboard,
     changes: ChangesPage,
     commit_history: CommitHistory,
+    stashes: StashesPage,
     branch_manager: BranchManager,
     merge: MergeVisualizer,
     board: ProjectBoard,
@@ -100,6 +107,7 @@ impl Screen {
             dashboard: Dashboard::new(),
             changes: ChangesPage::new(),
             commit_history: CommitHistory::new(),
+            stashes: StashesPage::new(),
             branch_manager: BranchManager::new(),
             merge: MergeVisualizer::new(),
             board: ProjectBoard::new(),
@@ -209,6 +217,17 @@ impl Screen {
                     pane_ratio: ctx.commit_pane_ratio,
                 };
                 self.commit_history.render(frame, params);
+            }
+            AppMode::Stashes => {
+                let params = crate::pages::stashes::StashesParams {
+                    area: content_area,
+                    stashes: ctx.cached_stashes,
+                    selected: ctx.selected_stash,
+                    scroll: ctx.stash_scroll,
+                    mode: ctx.stash_mode,
+                    input_buffer: ctx.stash_input_buffer,
+                };
+                self.stashes.render(frame, params);
             }
             AppMode::BranchManager => {
                 let params = crate::pages::branch_manager::BranchManagerParams {

@@ -21,10 +21,11 @@ use key_handler::{ActionContext, ActionProcessor, ActionStateUpdate, KeyAction, 
 use pages::branch_manager::{BranchInfo, UpstreamStatus};
 use pages::commit_history::CommitInfo;
 use pages::merge_visualizer::MergePaneFocus;
+use pages::stashes::StashInfo;
 use screen::Screen;
 use state::{
     BoardState, BranchManagerState, ChangesState, CommitHistoryState, DashboardState, MergeState,
-    ModuleManagerState,
+    ModuleManagerState, StashesState,
 };
 use status_symbols::{error, progress, success};
 
@@ -145,6 +146,8 @@ pub struct App {
     branch_manager: BranchManagerState,
     /// Commit history view state
     commit_history: CommitHistoryState,
+    /// Stashes view state
+    stashes: StashesState,
 
     // ====================================================================
     // Settings View State (simple, kept inline)
@@ -193,6 +196,7 @@ impl App {
             module_manager: ModuleManagerState::new(),
             branch_manager: BranchManagerState::new(),
             commit_history: CommitHistoryState::new(),
+            stashes: StashesState::new(),
             // Settings (kept inline)
             selected_setting_index: 0,
             available_remotes: Vec::new(),
@@ -650,6 +654,18 @@ impl App {
             window_size,
         );
 
+        let stash_len = self.stashes.cached_stashes.len();
+        self.stashes.selected_index = self.stashes.selected_index.min(stash_len.saturating_sub(1));
+        self.stashes.scroll = self
+            .stashes
+            .scroll
+            .min(stash_len.saturating_sub(window_size));
+        crate::ui_utils::auto_scroll(
+            self.stashes.selected_index,
+            &mut self.stashes.scroll,
+            window_size,
+        );
+
         let branch_len = self.branch_manager.cached_branches.len();
         self.branch_manager.selected_index = self
             .branch_manager
@@ -770,6 +786,11 @@ impl App {
             selected_commit: self.commit_history.selected_index,
             commit_scroll: self.commit_history.scroll,
             cached_commits: &self.commit_history.cached_commits,
+            selected_stash: self.stashes.selected_index,
+            stash_scroll: self.stashes.scroll,
+            cached_stashes: &self.stashes.cached_stashes,
+            stash_mode: self.stashes.mode,
+            stash_input_buffer: &self.stashes.input_buffer,
             pending_git_ops_count,
         };
 
@@ -812,6 +833,17 @@ impl App {
             AppMode::CommitHistory => {
                 let count = self.commit_history.cached_commits.len();
                 format!("Commit History: {} commits (↑↓ Navigate)", count)
+            }
+            AppMode::Stashes => {
+                let count = self.stashes.cached_stashes.len();
+                if self.stashes.is_create_mode() {
+                    format!("Stashes: {} (↵ Confirm, Esc Cancel)", count)
+                } else {
+                    format!(
+                        "Stashes: {} (↑↓ Select, n New, a Apply, p Pop, d Drop)",
+                        count
+                    )
+                }
             }
             AppMode::BranchManager => {
                 let count = self.branch_manager.cached_branches.len();
@@ -879,12 +911,16 @@ impl App {
             // New view context
             selected_commit_index: self.commit_history.selected_index,
             selected_branch_index: self.branch_manager.selected_index,
+            selected_stash_index: self.stashes.selected_index,
             selected_module_index: self.module_manager.selected_module,
             selected_developer_index: self.module_manager.selected_developer,
             cached_commits_len: self.commit_history.cached_commits.len(),
             cached_branches_len: self.branch_manager.cached_branches.len(),
+            cached_stashes_len: self.stashes.cached_stashes.len(),
             branch_create_mode: matches!(self.branch_manager.mode, BranchManagerMode::CreateBranch),
             branch_input_empty: self.branch_manager.is_input_empty(),
+            stash_create_mode: self.stashes.is_create_mode(),
+            stash_input_empty: self.stashes.is_input_empty(),
             module_manager_in_developer_list: self.module_manager.is_developer_list(),
             module_create_mode: matches!(self.module_manager.mode, ModuleManagerMode::CreateModule),
             module_edit_mode: matches!(self.module_manager.mode, ModuleManagerMode::EditModule),
@@ -990,6 +1026,31 @@ impl App {
                     .saturating_sub(window_size - 1);
             }
             self.ensure_selected_commit_files_loaded();
+        }
+        if let Some(idx) = update.selected_stash_index {
+            self.stashes.selected_index =
+                idx.min(self.stashes.cached_stashes.len().saturating_sub(1));
+            if self.stashes.selected_index < self.stashes.scroll {
+                self.stashes.scroll = self.stashes.selected_index;
+            } else if self.stashes.selected_index >= self.stashes.scroll + window_size {
+                self.stashes.scroll = self.stashes.selected_index.saturating_sub(window_size - 1);
+            }
+        }
+        if let Some(mode) = update.stash_create_mode {
+            if mode {
+                self.stashes.enter_create_mode();
+            } else {
+                self.stashes.exit_create_mode();
+            }
+        }
+        if let Some(c) = update.stash_input_append {
+            self.stashes.append_input_char(c);
+        }
+        if update.stash_input_pop.is_some() {
+            self.stashes.pop_input_char();
+        }
+        if update.stash_input_clear.is_some() {
+            self.stashes.clear_input();
         }
         if let Some(idx) = update.selected_branch_index {
             self.branch_manager.selected_index =
@@ -1187,6 +1248,18 @@ impl App {
         }
         if update.commit_requested.is_some() {
             self.perform_commit();
+        }
+        if update.stash_create_requested.is_some() {
+            self.perform_stash_create();
+        }
+        if update.stash_apply_requested.is_some() {
+            self.perform_stash_apply();
+        }
+        if update.stash_pop_requested.is_some() {
+            self.perform_stash_pop();
+        }
+        if update.stash_drop_requested.is_some() {
+            self.perform_stash_drop();
         }
 
         // Branch operations
@@ -1530,6 +1603,14 @@ impl App {
                     error = Some(("Failed to load commit history".to_string(), e));
                 }
             },
+            AppMode::Stashes => match self.load_stashes() {
+                Ok(stashes) => {
+                    self.stashes.update_stashes(stashes);
+                }
+                Err(e) => {
+                    error = Some(("Failed to list stashes".to_string(), e));
+                }
+            },
             AppMode::Changes => {
                 // Refresh changes when entering the view
                 let refresh_result = self.refresh_changes_summary(true);
@@ -1638,6 +1719,22 @@ impl App {
             .collect())
     }
 
+    fn load_stashes(&self) -> color_eyre::Result<Vec<StashInfo>> {
+        let client = self
+            .git_client
+            .as_ref()
+            .ok_or_else(|| color_eyre::eyre::eyre!("No Git repository"))?;
+        let stashes = client.list_stashes()?;
+        Ok(stashes
+            .into_iter()
+            .map(|stash| StashInfo {
+                index: stash.index,
+                name: stash.name,
+                oid: stash.oid,
+            })
+            .collect())
+    }
+
     fn perform_branch_switch(&mut self) {
         if !self.ensure_repo_ready() {
             return;
@@ -1719,6 +1816,117 @@ impl App {
                     Err(e) => {
                         self.report_git_error("Failed to delete branch", &e);
                     }
+                }
+            }
+        }
+    }
+
+    fn perform_stash_create(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let message = self.stashes.get_input_value().to_string();
+        if let Some(client) = &self.git_client {
+            match client.create_stash(&message) {
+                Ok(_oid) => {
+                    self.status_message = success(&format!("Created stash: {}", message));
+                    self.stashes.exit_create_mode();
+                    self.refresh_view_cache();
+                    if let Err(e) = self.refresh_changes_summary(true) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to create stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_apply(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.apply_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Applied stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    if let Err(e) = self.refresh_changes_summary(false) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to apply stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_pop(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.pop_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Popped stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    self.refresh_view_cache();
+                    if let Err(e) = self.refresh_changes_summary(false) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to pop stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_drop(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.drop_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Dropped stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to drop stash", &e);
                 }
             }
         }
@@ -1943,6 +2151,7 @@ impl App {
 pub enum AppMode {
     Dashboard,
     Changes,
+    Stashes,
     CommitHistory,
     BranchManager,
     MergeVisualizer,
@@ -2081,7 +2290,8 @@ impl AppMode {
         use AppMode::*;
         match self {
             Dashboard => Changes,
-            Changes => CommitHistory,
+            Changes => Stashes,
+            Stashes => CommitHistory,
             CommitHistory => BranchManager,
             BranchManager => MergeVisualizer,
             MergeVisualizer => ProjectBoard,
@@ -2095,12 +2305,13 @@ impl AppMode {
         match self {
             AppMode::Dashboard => 0,
             AppMode::Changes => 1,
-            AppMode::CommitHistory => 2,
-            AppMode::BranchManager => 3,
-            AppMode::MergeVisualizer => 4,
-            AppMode::ProjectBoard => 5,
-            AppMode::ModuleManager => 6,
-            AppMode::Settings => 7,
+            AppMode::Stashes => 2,
+            AppMode::CommitHistory => 3,
+            AppMode::BranchManager => 4,
+            AppMode::MergeVisualizer => 5,
+            AppMode::ProjectBoard => 6,
+            AppMode::ModuleManager => 7,
+            AppMode::Settings => 8,
         }
     }
 }

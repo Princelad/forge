@@ -40,13 +40,22 @@ use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use git2::{
-    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StatusOptions, Tree,
+    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StashApplyOptions,
+    StashFlags, StatusOptions, Tree,
 };
 
 use crate::data::{Change, FileStatus};
 
 /// Branch info: (name, is_current, is_remote, upstream)
 pub type BranchData = (String, bool, bool, Option<String>);
+
+/// Stash info returned from the repository.
+#[derive(Debug, Clone)]
+pub struct StashEntry {
+    pub index: usize,
+    pub name: String,
+    pub oid: String,
+}
 
 /// Transfer progress for remote operations (fetch/push)
 #[derive(Debug, Clone, Default)]
@@ -688,6 +697,57 @@ impl GitClient {
         }
 
         Ok(names.into_iter().collect())
+    }
+
+    /// List all stashes in the repository.
+    ///
+    /// Returns entries ordered by their stash index (0 = most recent).
+    pub fn list_stashes(&self) -> Result<Vec<StashEntry>> {
+        let mut stashes = Vec::new();
+
+        let mut repo = Repository::open(self.repo.path())?;
+        repo.stash_foreach(|index, name, oid| {
+            stashes.push(StashEntry {
+                index,
+                name: name.to_string(),
+                oid: oid.to_string(),
+            });
+            true
+        })?;
+
+        Ok(stashes)
+    }
+
+    /// Create a new stash with a custom message.
+    pub fn create_stash(&self, message: &str) -> Result<git2::Oid> {
+        let sig = self.default_signature()?;
+        let mut repo = Repository::open(self.repo.path())?;
+        let oid = repo.stash_save(&sig, message, Some(StashFlags::DEFAULT))?;
+        Ok(oid)
+    }
+
+    /// Apply a stash without dropping it.
+    pub fn apply_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        let mut options = StashApplyOptions::new();
+        repo.stash_apply(index, Some(&mut options))?;
+        Ok(())
+    }
+
+    /// Apply a stash and drop it from the list.
+    pub fn pop_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        let mut options = StashApplyOptions::new();
+        repo.stash_apply(index, Some(&mut options))?;
+        repo.stash_drop(index)?;
+        Ok(())
+    }
+
+    /// Drop a stash entry without applying it.
+    pub fn drop_stash(&self, index: usize) -> Result<()> {
+        let mut repo = Repository::open(self.repo.path())?;
+        repo.stash_drop(index)?;
+        Ok(())
     }
 
     /// List all branches (local and remote)

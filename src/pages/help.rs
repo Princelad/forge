@@ -83,6 +83,10 @@ impl HelpPage {
                 Span::raw("    Browse & commit changes"),
             ]),
             Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().yellow()),
+                Span::raw("    View saved stashes"),
+            ]),
+            Line::from(vec![
                 Span::styled("Board", Style::new().bold().yellow()),
                 Span::raw("      Move tasks between columns"),
             ]),
@@ -129,6 +133,10 @@ impl HelpPage {
             Line::from(vec![
                 Span::styled("Branches", Style::new().bold().magenta()),
                 Span::raw("   n: New, d: Delete, Enter: Switch"),
+            ]),
+            Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().magenta()),
+                Span::raw("    n: New, a: Apply, p: Pop, d: Drop, Enter: Create"),
             ]),
             Line::from(vec![
                 Span::styled("Modules", Style::new().bold().magenta()),
