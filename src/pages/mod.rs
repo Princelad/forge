@@ -8,3 +8,4 @@ pub mod merge_visualizer;
 pub mod module_manager;
 pub mod project_board;
 pub mod settings;
+pub mod stashes;

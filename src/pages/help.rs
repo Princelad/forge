@@ -83,6 +83,10 @@ impl HelpPage {
                 Span::raw("    Browse & commit changes"),
             ]),
             Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().yellow()),
+                Span::raw("    View saved stashes"),
+            ]),
+            Line::from(vec![
                 Span::styled("Board", Style::new().bold().yellow()),
                 Span::raw("      Move tasks between columns"),
             ]),

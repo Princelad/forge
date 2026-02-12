@@ -24,6 +24,7 @@ impl MainMenu {
             menu_items: vec![
                 "Dashboard",
                 "Changes",
+                "Stashes",
                 "History",
                 "Branches",
                 "Merge",

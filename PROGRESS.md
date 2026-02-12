@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Stash: list existing stashes.
 - Stash: create stash with message.
 - Stash: apply and pop stash.
 - Stash: drop stash entry.
@@ -24,3 +23,4 @@
 - Keybindings: load config file (TOML).
 - Keybindings: validate and report errors.
 - Keybindings: detect conflicting bindings across actions.
+- Stash: list existing stashes.
