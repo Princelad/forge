@@ -2,7 +2,7 @@
 
 - Pending:
 
-- Keybindings: validate and report errors.
+- Keybindings: detect conflicting bindings across actions.
 - Stash: list existing stashes.
 - Stash: create stash with message.
 - Stash: apply and pop stash.
@@ -23,3 +23,4 @@
 - Settings: persist theme/notifications/autosync to config.
 - Settings: implement notifications/autosync behavior (currently placeholders).
 - Keybindings: load config file (TOML).
+- Keybindings: validate and report errors.
