@@ -839,7 +839,7 @@ impl App {
                 if self.stashes.is_create_mode() {
                     format!("Stashes: {} (↵ Confirm, Esc Cancel)", count)
                 } else {
-                    format!("Stashes: {} (↑↓ Select, n New)", count)
+                    format!("Stashes: {} (↑↓ Select, n New, a Apply, p Pop)", count)
                 }
             }
             AppMode::BranchManager => {
@@ -1248,6 +1248,12 @@ impl App {
         }
         if update.stash_create_requested.is_some() {
             self.perform_stash_create();
+        }
+        if update.stash_apply_requested.is_some() {
+            self.perform_stash_apply();
+        }
+        if update.stash_pop_requested.is_some() {
+            self.perform_stash_pop();
         }
 
         // Branch operations
@@ -1826,6 +1832,67 @@ impl App {
                 }
                 Err(e) => {
                     self.report_git_error("Failed to create stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_apply(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.apply_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Applied stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    if let Err(e) = self.refresh_changes_summary(false) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to apply stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_stash_pop(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+        let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
+            Some(stash) => stash,
+            None => {
+                self.status_message = "No stash selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.pop_stash(stash.index) {
+                Ok(()) => {
+                    self.status_message = success(&format!(
+                        "Popped stash: stash@{{{}}}: {}",
+                        stash.index, stash.name
+                    ));
+                    self.refresh_view_cache();
+                    if let Err(e) = self.refresh_changes_summary(false) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                }
+                Err(e) => {
+                    self.report_git_error("Failed to pop stash", &e);
                 }
             }
         }
