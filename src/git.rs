@@ -40,7 +40,8 @@ use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use git2::{
-    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StatusOptions, Tree,
+    DiffFormat, DiffOptions, ErrorCode, IndexAddOption, Repository, Signature, StashFlags,
+    StatusOptions, Tree,
 };
 
 use crate::data::{Change, FileStatus};
@@ -715,6 +716,14 @@ impl GitClient {
         })?;
 
         Ok(stashes)
+    }
+
+    /// Create a new stash with a custom message.
+    pub fn create_stash(&self, message: &str) -> Result<git2::Oid> {
+        let sig = self.default_signature()?;
+        let mut repo = Repository::open(self.repo.path())?;
+        let oid = repo.stash_save(&sig, message, Some(StashFlags::DEFAULT))?;
+        Ok(oid)
     }
 
     /// List all branches (local and remote)

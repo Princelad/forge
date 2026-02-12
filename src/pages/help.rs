@@ -135,6 +135,10 @@ impl HelpPage {
                 Span::raw("   n: New, d: Delete, Enter: Switch"),
             ]),
             Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().magenta()),
+                Span::raw("    n: New, Enter: Create"),
+            ]),
+            Line::from(vec![
                 Span::styled("Modules", Style::new().bold().magenta()),
                 Span::raw("    n: New, e: Edit, d: Delete, a: Assign"),
             ]),

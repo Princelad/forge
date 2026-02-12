@@ -73,6 +73,8 @@ pub struct RenderContext<'a> {
     pub selected_stash: usize,
     pub stash_scroll: usize,
     pub cached_stashes: &'a [crate::pages::stashes::StashInfo],
+    pub stash_mode: crate::pages::stashes::StashesMode,
+    pub stash_input_buffer: &'a str,
     pub pending_git_ops_count: usize,
 }
 
@@ -222,6 +224,8 @@ impl Screen {
                     stashes: ctx.cached_stashes,
                     selected: ctx.selected_stash,
                     scroll: ctx.stash_scroll,
+                    mode: ctx.stash_mode,
+                    input_buffer: ctx.stash_input_buffer,
                 };
                 self.stashes.render(frame, params);
             }

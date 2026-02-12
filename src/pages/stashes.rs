@@ -1,4 +1,4 @@
-use crate::ui_utils::create_list_state;
+use crate::ui_utils::{create_list_state, render_input_form};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -14,6 +14,15 @@ pub struct StashesParams<'a> {
     pub stashes: &'a [StashInfo],
     pub selected: usize,
     pub scroll: usize,
+    pub mode: StashesMode,
+    pub input_buffer: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum StashesMode {
+    #[default]
+    List,
+    Create,
 }
 
 #[derive(Debug, Clone)]
@@ -38,23 +47,48 @@ impl StashesPage {
     }
 
     pub fn render(&self, frame: &mut Frame, params: StashesParams) {
-        let layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(params.area);
+        match params.mode {
+            StashesMode::List => {
+                let layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+                    .split(params.area);
 
-        self.render_stash_list(
-            frame,
-            layout[0],
-            params.stashes,
-            params.selected,
-            params.scroll,
-        );
+                self.render_stash_list(
+                    frame,
+                    layout[0],
+                    params.stashes,
+                    params.selected,
+                    params.scroll,
+                );
 
-        if let Some(stash) = params.stashes.get(params.selected) {
-            self.render_stash_details(frame, layout[1], stash);
-        } else {
-            frame.render_widget(Block::bordered().title("Stash Details"), layout[1]);
+                if let Some(stash) = params.stashes.get(params.selected) {
+                    self.render_stash_details(frame, layout[1], stash);
+                } else {
+                    frame.render_widget(Block::bordered().title("Stash Details"), layout[1]);
+                }
+            }
+            StashesMode::Create => {
+                let layout = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(0), Constraint::Length(7)])
+                    .split(params.area);
+
+                self.render_stash_list(
+                    frame,
+                    layout[0],
+                    params.stashes,
+                    params.selected,
+                    params.scroll,
+                );
+                render_input_form(
+                    frame,
+                    layout[1],
+                    "Create Stash",
+                    "Message",
+                    params.input_buffer,
+                );
+            }
         }
     }
 
@@ -80,7 +114,7 @@ impl StashesPage {
         let mut state = create_list_state(selected, scroll, items.len());
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title("Stashes"))
+                .block(Block::bordered().title("Stashes | n New"))
                 .highlight_style(Style::new().reversed())
                 .highlight_symbol(">> "),
             area,
