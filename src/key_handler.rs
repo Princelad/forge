@@ -245,6 +245,7 @@ fn apply_keybindings(
     config: KeybindingsConfig,
 ) -> std::io::Result<()> {
     let mut errors = Vec::new();
+    let mut seen_bindings: HashMap<KeyChord, (KeyAction, String)> = HashMap::new();
     for (action_name, binding) in config.bindings {
         let Some(action) = action_from_name(&action_name) else {
             errors.push(format!("Unknown action '{}'.", action_name));
@@ -269,6 +270,17 @@ fn apply_keybindings(
                     continue;
                 }
             };
+            if let Some((existing_action, existing_name)) = seen_bindings.get(&chord) {
+                if existing_action != &action {
+                    errors.push(format!(
+                        "Binding '{}' is used by actions '{}' and '{}'.",
+                        entry, existing_name, action_name
+                    ));
+                    continue;
+                }
+            } else {
+                seen_bindings.insert(chord, (action.clone(), action_name.clone()));
+            }
             keymap.insert(chord, action.clone());
         }
     }
@@ -2148,5 +2160,32 @@ mod tests {
             keymap.get(&KeyChord::new(KeyCode::Esc, KeyModifiers::NONE)),
             Some(&KeyAction::Back)
         );
+    }
+
+    #[test]
+    fn reports_conflicting_keybindings_across_actions() {
+        let mut keymap = default_keymap();
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            "quit".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+        bindings.insert(
+            "back".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+
+        let config = KeybindingsConfig { bindings };
+        let err = apply_keybindings(&mut keymap, config).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(msg.contains("Binding 'ctrl+x' is used by actions"));
+        assert!(msg.contains("quit"));
+        assert!(msg.contains("back"));
+        let resolved = keymap.get(&KeyChord::new(KeyCode::Char('x'), KeyModifiers::CONTROL));
+        assert!(matches!(
+            resolved,
+            Some(KeyAction::Quit) | Some(KeyAction::Back)
+        ));
     }
 }
