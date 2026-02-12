@@ -256,6 +256,11 @@ impl App {
                     if let Ok(Some(settings)) = app.load_settings_from(wd) {
                         app.settings = settings;
                     }
+                    if let Err(err) = app.key_handler.load_keybindings_from(wd) {
+                        let msg = error(&format!("Failed to load keybindings: {}", err));
+                        app.status_message = msg.clone();
+                        app.last_completion_message = Some(msg);
+                    }
                 }
                 // Auto-populate developers from Git history
                 if let Some(client) = &app.git_client {
