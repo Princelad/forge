@@ -244,22 +244,44 @@ fn apply_keybindings(
     keymap: &mut HashMap<KeyChord, KeyAction>,
     config: KeybindingsConfig,
 ) -> std::io::Result<()> {
+    let mut errors = Vec::new();
     for (action_name, binding) in config.bindings {
-        let action = action_from_name(&action_name).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Unknown keybinding action: {}", action_name),
-            )
-        })?;
-        for entry in binding.entries() {
-            let chord = parse_key_chord(entry).map_err(|err| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid keybinding '{}': {}", entry, err),
-                )
-            })?;
+        let Some(action) = action_from_name(&action_name) else {
+            errors.push(format!("Unknown action '{}'.", action_name));
+            continue;
+        };
+        let entries = binding.entries();
+        if entries.is_empty() {
+            errors.push(format!(
+                "No bindings provided for action '{}'.",
+                action_name
+            ));
+            continue;
+        }
+        for entry in entries {
+            let chord = match parse_key_chord(entry) {
+                Ok(chord) => chord,
+                Err(err) => {
+                    errors.push(format!(
+                        "Invalid binding '{}' for action '{}': {}.",
+                        entry, action_name, err
+                    ));
+                    continue;
+                }
+            };
             keymap.insert(chord, action.clone());
         }
+    }
+    if !errors.is_empty() {
+        let mut message = String::from("Invalid keybindings config:");
+        for error in errors {
+            message.push_str("\n- ");
+            message.push_str(&error);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            message,
+        ));
     }
     Ok(())
 }
@@ -2098,5 +2120,33 @@ mod tests {
         assert!(update.focus.is_none());
         assert!(update.current_view.is_none());
         assert!(update.show_help.is_none());
+    }
+
+    #[test]
+    fn reports_invalid_keybindings_entries() {
+        let mut keymap = default_keymap();
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            "unknown_action".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+        bindings.insert(
+            "quit".to_string(),
+            BindingValue::Single("ctrl+bad".to_string()),
+        );
+        bindings.insert("help".to_string(), BindingValue::Multiple(Vec::new()));
+        bindings.insert("back".to_string(), BindingValue::Single("esc".to_string()));
+
+        let config = KeybindingsConfig { bindings };
+        let err = apply_keybindings(&mut keymap, config).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(msg.contains("Unknown action"));
+        assert!(msg.contains("Invalid binding"));
+        assert!(msg.contains("No bindings provided"));
+        assert_eq!(
+            keymap.get(&KeyChord::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Some(&KeyAction::Back)
+        );
     }
 }
