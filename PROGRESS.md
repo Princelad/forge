@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Integration tests: core Git ops (status, stage, commit).
 
 - Completed:
 
@@ -24,3 +23,4 @@
 - Troubleshooting guide: common Git errors.
 - Troubleshooting guide: recovery steps.
 - Integration tests: repo fixture helpers.
+- Integration tests: core Git ops (status, stage, commit).
