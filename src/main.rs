@@ -857,7 +857,7 @@ impl App {
                 self.board.current_column_name()
             ),
             AppMode::MergeVisualizer => format!(
-                "Merge: {} (←→ Pane, ↑↓ File)",
+                "Merge: {} (←→ Pane, ↑↓ File, Enter Accept)",
                 match self.merge.focus {
                     MergePaneFocus::Files => "Files",
                     MergePaneFocus::Local => "Local",
@@ -1969,7 +1969,26 @@ impl App {
                     self.refresh_view_cache();
                 }
                 Err(e) => {
-                    self.report_git_error("Cherry-pick failed", &e);
+                    let message = e.to_string();
+                    if message.to_lowercase().contains("conflict") {
+                        self.merge.clear_resolutions();
+                        self.merge.focus = MergePaneFocus::Files;
+                        self.merge.selected_file_index = 0;
+                        self.merge.scroll = 0;
+                        self.current_view = AppMode::MergeVisualizer;
+                        self.menu_selected_index = AppMode::MergeVisualizer.menu_index();
+                        self.focus = Focus::View;
+                        self.input_mode = InputMode::Normal;
+                        if let Err(err) = self.refresh_merge_conflicts() {
+                            self.report_git_error("Failed to list merge conflicts", &err);
+                        } else {
+                            self.status_message = error(
+                                "Cherry-pick conflict. Resolve in Merge view, then commit from Changes.",
+                            );
+                        }
+                    } else {
+                        self.report_git_error("Cherry-pick failed", &e);
+                    }
                 }
             }
         }
