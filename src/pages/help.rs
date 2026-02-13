@@ -139,6 +139,10 @@ impl HelpPage {
                 Span::raw("    n: New, a: Apply, p: Pop, d: Drop, Enter: Create"),
             ]),
             Line::from(vec![
+                Span::styled("History", Style::new().bold().magenta()),
+                Span::raw("    c: Cherry-pick selected commit"),
+            ]),
+            Line::from(vec![
                 Span::styled("Modules", Style::new().bold().magenta()),
                 Span::raw("    n: New, e: Edit, d: Delete, a: Assign"),
             ]),
