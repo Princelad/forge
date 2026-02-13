@@ -24,7 +24,7 @@ cargo build --release
 - 📝 **Commit History** — Browse and inspect commits
 - 👥 **Team Management** — Track modules and developers
 - 🔀 **Merge Visualization** — Side-by-side local/incoming previews with accept markers
-- ⚙️ **Customizable** — Theme switching (notifications/autosync placeholders)
+- ⚙️ **Customizable** — Theme switching, notifications, and autosync
 - ⌨️ **Keyboard-Driven** — Fully navigable without mouse
 
 ## Documentation
@@ -52,7 +52,7 @@ cargo build --release
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/forge.git
+git clone https://github.com/Princelad/forge.git
 cd forge
 
 # Build for production
