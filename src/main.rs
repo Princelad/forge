@@ -97,7 +97,7 @@ fn main() -> color_eyre::Result<()> {
 /// - Page logic is now unit testable in isolation
 /// - Clear separation of concerns
 /// - Reduced cognitive load when working with specific pages
-/// - Foundation for v0.3.0 full state machine
+/// - Foundation for v0.4.0 full state machine
 pub struct App {
     // ====================================================================
     // Core Application State

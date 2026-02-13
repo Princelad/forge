@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.0 — 2026-02-13
+
+### Added
+
+- Cherry-pick single-commit flow with conflict routing to Merge view.
+- Merge conflict list sourced from real merge state with accepted-pane resolution flow.
+- Stash management: list, create with message, apply, pop, and drop.
+- Keybindings configuration via TOML, with validation and conflict detection.
+- Settings persistence plus notifications/autosync behavior.
+- Integration test repo fixtures and core Git ops coverage (status, stage, commit).
+- Troubleshooting guides for common Git errors and recovery steps.
+
+### Changed
+
+- Documentation refreshed for remote ops, keybindings, and merge resolution flow.
+- Repository clone URL and wiki references updated for accuracy.
+
+### Dependencies
+
+- Bumped `tempfile` to 3.25.0.
+
 ## v0.3.0 — 2026-02-08
 
 ### Added
