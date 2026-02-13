@@ -17,6 +17,7 @@ use crate::pages::merge_visualizer::MergeVisualizer;
 use crate::pages::module_manager::ModuleManager;
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
+use crate::pages::stashes::StashesPage;
 use crate::{AppMode, AppSettings, Focus, Theme};
 
 /// Context for rendering the UI
@@ -40,6 +41,7 @@ pub struct RenderContext<'a> {
     pub selected_board_item: usize,
     pub merge_file_index: usize,
     pub merge_focus: crate::pages::merge_visualizer::MergePaneFocus,
+    pub merge_conflicts: &'a [crate::data::Change],
     pub selected_setting: usize,
     pub show_help: bool,
     pub project_scroll: usize,
@@ -51,6 +53,7 @@ pub struct RenderContext<'a> {
     pub settings_options: &'a [String],
     pub total_projects: usize,
     pub settings: &'a AppSettings,
+    pub selected_remote: Option<String>,
     pub accepted_merge: Option<crate::pages::merge_visualizer::MergePaneFocus>,
     pub workdir: Option<&'a std::path::Path>,
     pub module_manager_mode: crate::pages::module_manager::ModuleManagerMode,
@@ -67,6 +70,11 @@ pub struct RenderContext<'a> {
     pub selected_commit: usize,
     pub commit_scroll: usize,
     pub cached_commits: &'a [crate::pages::commit_history::CommitInfo],
+    pub selected_stash: usize,
+    pub stash_scroll: usize,
+    pub cached_stashes: &'a [crate::pages::stashes::StashInfo],
+    pub stash_mode: crate::pages::stashes::StashesMode,
+    pub stash_input_buffer: &'a str,
     pub pending_git_ops_count: usize,
 }
 
@@ -76,6 +84,7 @@ pub struct Screen {
     dashboard: Dashboard,
     changes: ChangesPage,
     commit_history: CommitHistory,
+    stashes: StashesPage,
     branch_manager: BranchManager,
     merge: MergeVisualizer,
     board: ProjectBoard,
@@ -98,6 +107,7 @@ impl Screen {
             dashboard: Dashboard::new(),
             changes: ChangesPage::new(),
             commit_history: CommitHistory::new(),
+            stashes: StashesPage::new(),
             branch_manager: BranchManager::new(),
             merge: MergeVisualizer::new(),
             board: ProjectBoard::new(),
@@ -193,6 +203,7 @@ impl Screen {
                         commit_msg: ctx.commit_msg,
                         scroll: ctx.changes_scroll,
                         pane_ratio: ctx.changes_pane_ratio,
+                        remote_name: ctx.selected_remote.as_deref(),
                     };
                     self.changes.render(frame, params);
                 }
@@ -207,6 +218,17 @@ impl Screen {
                 };
                 self.commit_history.render(frame, params);
             }
+            AppMode::Stashes => {
+                let params = crate::pages::stashes::StashesParams {
+                    area: content_area,
+                    stashes: ctx.cached_stashes,
+                    selected: ctx.selected_stash,
+                    scroll: ctx.stash_scroll,
+                    mode: ctx.stash_mode,
+                    input_buffer: ctx.stash_input_buffer,
+                };
+                self.stashes.render(frame, params);
+            }
             AppMode::BranchManager => {
                 let params = crate::pages::branch_manager::BranchManagerParams {
                     area: content_area,
@@ -220,10 +242,10 @@ impl Screen {
             }
             AppMode::MergeVisualizer => {
                 let proj = ctx.store.projects.get(ctx.selected_project);
-                if let Some(p) = proj {
+                if proj.is_some() {
                     let params = crate::pages::merge_visualizer::MergeVisualizerParams {
                         area: content_area,
-                        project: p,
+                        conflicts: ctx.merge_conflicts,
                         selected_file: ctx.merge_file_index,
                         pane_focus: ctx.merge_focus,
                         scroll: ctx.merge_scroll,

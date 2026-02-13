@@ -83,6 +83,10 @@ impl HelpPage {
                 Span::raw("    Browse & commit changes"),
             ]),
             Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().yellow()),
+                Span::raw("    View saved stashes"),
+            ]),
+            Line::from(vec![
                 Span::styled("Board", Style::new().bold().yellow()),
                 Span::raw("      Move tasks between columns"),
             ]),
@@ -119,12 +123,24 @@ impl HelpPage {
             Line::from(vec![
                 Span::styled("Remote", Style::new().bold().magenta()),
                 Span::raw("      "),
+                Span::styled("Alt+f", Style::new().bold()),
+                Span::raw(": Fetch, "),
+                Span::styled("Alt+p", Style::new().bold()),
+                Span::raw(": Push, "),
                 Span::styled("Ctrl+l", Style::new().bold()),
                 Span::raw(": Pull (Changes view)"),
             ]),
             Line::from(vec![
                 Span::styled("Branches", Style::new().bold().magenta()),
                 Span::raw("   n: New, d: Delete, Enter: Switch"),
+            ]),
+            Line::from(vec![
+                Span::styled("Stashes", Style::new().bold().magenta()),
+                Span::raw("    n: New, a: Apply, p: Pop, d: Drop, Enter: Create"),
+            ]),
+            Line::from(vec![
+                Span::styled("History", Style::new().bold().magenta()),
+                Span::raw("    c: Cherry-pick selected commit"),
             ]),
             Line::from(vec![
                 Span::styled("Modules", Style::new().bold().magenta()),

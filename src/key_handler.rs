@@ -1,4 +1,8 @@
+use std::collections::HashMap;
+use std::path::Path;
+
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use serde::Deserialize;
 
 use crate::ui_utils::adjust_pane_ratio;
 use crate::{AppMode, Focus, InputMode};
@@ -30,8 +34,50 @@ pub enum KeyAction {
     None,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct KeyChord {
+    modifiers: KeyModifiers,
+    code: KeyCode,
+}
+
+impl KeyChord {
+    fn new(code: KeyCode, modifiers: KeyModifiers) -> Self {
+        Self { modifiers, code }
+    }
+
+    fn from_event(event: &KeyEvent) -> Self {
+        Self {
+            modifiers: event.modifiers,
+            code: event.code,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct KeybindingsConfig {
+    bindings: HashMap<String, BindingValue>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum BindingValue {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl BindingValue {
+    fn entries(&self) -> Vec<&str> {
+        match self {
+            BindingValue::Single(value) => vec![value.as_str()],
+            BindingValue::Multiple(values) => values.iter().map(String::as_str).collect(),
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct KeyHandler;
+pub struct KeyHandler {
+    keymap: HashMap<KeyChord, KeyAction>,
+}
 
 impl Default for KeyHandler {
     fn default() -> Self {
@@ -41,7 +87,22 @@ impl Default for KeyHandler {
 
 impl KeyHandler {
     pub fn new() -> Self {
-        Self
+        Self {
+            keymap: default_keymap(),
+        }
+    }
+
+    pub fn load_keybindings_from(&mut self, workdir: &Path) -> std::io::Result<()> {
+        let path = workdir.join(".forge").join("keybindings.toml");
+        if !path.exists() {
+            return Ok(());
+        }
+
+        let contents = std::fs::read_to_string(path)?;
+        let config: KeybindingsConfig = toml::from_str(&contents)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        apply_keybindings(&mut self.keymap, config)?;
+        Ok(())
     }
 
     pub fn handle_crossterm_events(&mut self) -> color_eyre::Result<KeyAction> {
@@ -55,29 +116,261 @@ impl KeyHandler {
     }
 
     pub fn on_key_event(&mut self, key: KeyEvent) -> KeyAction {
-        match (key.modifiers, key.code) {
-            (KeyModifiers::NONE, KeyCode::Esc) => KeyAction::Back,
-            (_, KeyCode::Char('q'))
-            | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => KeyAction::Quit,
-            (_, KeyCode::Char('?')) => KeyAction::Help,
-            (KeyModifiers::CONTROL, KeyCode::Char('f') | KeyCode::Char('F')) => KeyAction::Search,
-            (KeyModifiers::CONTROL, KeyCode::Char('l') | KeyCode::Char('L')) => KeyAction::Pull,
-            (KeyModifiers::NONE, KeyCode::Tab) => KeyAction::NextView,
-            (KeyModifiers::NONE, KeyCode::Up) => KeyAction::NavigateUp,
-            (KeyModifiers::NONE, KeyCode::Down) => KeyAction::NavigateDown,
-            (KeyModifiers::NONE, KeyCode::Left) => KeyAction::NavigateLeft,
-            (KeyModifiers::NONE, KeyCode::Right) => KeyAction::NavigateRight,
-            (KeyModifiers::ALT, KeyCode::Left) => KeyAction::PaneNarrow,
-            (KeyModifiers::ALT, KeyCode::Right) => KeyAction::PaneWiden,
-            (KeyModifiers::NONE, KeyCode::PageUp) => KeyAction::ScrollPageUp,
-            (KeyModifiers::NONE, KeyCode::PageDown) => KeyAction::ScrollPageDown,
-            (KeyModifiers::NONE, KeyCode::Enter) => KeyAction::Select,
-            (KeyModifiers::NONE, KeyCode::Backspace) => KeyAction::Backspace,
-            (KeyModifiers::NONE, KeyCode::Char(' ')) => KeyAction::ToggleStaging,
-            (KeyModifiers::NONE, KeyCode::Char(c)) => KeyAction::InputChar(c),
+        let chord = KeyChord::from_event(&key);
+        if let Some(action) = self.keymap.get(&chord) {
+            return action.clone();
+        }
+
+        if matches!(key.code, KeyCode::Char('q')) {
+            return KeyAction::Quit;
+        }
+        if matches!(key.code, KeyCode::Char('?')) {
+            return KeyAction::Help;
+        }
+
+        match key.code {
+            KeyCode::Char(c) => KeyAction::InputChar(c),
             _ => KeyAction::None,
         }
     }
+}
+
+fn default_keymap() -> HashMap<KeyChord, KeyAction> {
+    let mut map = HashMap::new();
+    map.insert(
+        KeyChord::new(KeyCode::Esc, KeyModifiers::NONE),
+        KeyAction::Back,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('q'), KeyModifiers::NONE),
+        KeyAction::Quit,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        KeyAction::Quit,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('C'), KeyModifiers::CONTROL),
+        KeyAction::Quit,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('?'), KeyModifiers::NONE),
+        KeyAction::Help,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
+        KeyAction::Search,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('F'), KeyModifiers::CONTROL),
+        KeyAction::Search,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('l'), KeyModifiers::CONTROL),
+        KeyAction::Pull,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('L'), KeyModifiers::CONTROL),
+        KeyAction::Pull,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('f'), KeyModifiers::ALT),
+        KeyAction::Fetch,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('F'), KeyModifiers::ALT),
+        KeyAction::Fetch,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('p'), KeyModifiers::ALT),
+        KeyAction::Push,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char('P'), KeyModifiers::ALT),
+        KeyAction::Push,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Tab, KeyModifiers::NONE),
+        KeyAction::NextView,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Up, KeyModifiers::NONE),
+        KeyAction::NavigateUp,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Down, KeyModifiers::NONE),
+        KeyAction::NavigateDown,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Left, KeyModifiers::NONE),
+        KeyAction::NavigateLeft,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Right, KeyModifiers::NONE),
+        KeyAction::NavigateRight,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Left, KeyModifiers::ALT),
+        KeyAction::PaneNarrow,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Right, KeyModifiers::ALT),
+        KeyAction::PaneWiden,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::PageUp, KeyModifiers::NONE),
+        KeyAction::ScrollPageUp,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::PageDown, KeyModifiers::NONE),
+        KeyAction::ScrollPageDown,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Enter, KeyModifiers::NONE),
+        KeyAction::Select,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Backspace, KeyModifiers::NONE),
+        KeyAction::Backspace,
+    );
+    map.insert(
+        KeyChord::new(KeyCode::Char(' '), KeyModifiers::NONE),
+        KeyAction::ToggleStaging,
+    );
+    map
+}
+
+fn apply_keybindings(
+    keymap: &mut HashMap<KeyChord, KeyAction>,
+    config: KeybindingsConfig,
+) -> std::io::Result<()> {
+    let mut errors = Vec::new();
+    let mut seen_bindings: HashMap<KeyChord, (KeyAction, String)> = HashMap::new();
+    for (action_name, binding) in config.bindings {
+        let Some(action) = action_from_name(&action_name) else {
+            errors.push(format!("Unknown action '{}'.", action_name));
+            continue;
+        };
+        let entries = binding.entries();
+        if entries.is_empty() {
+            errors.push(format!(
+                "No bindings provided for action '{}'.",
+                action_name
+            ));
+            continue;
+        }
+        for entry in entries {
+            let chord = match parse_key_chord(entry) {
+                Ok(chord) => chord,
+                Err(err) => {
+                    errors.push(format!(
+                        "Invalid binding '{}' for action '{}': {}.",
+                        entry, action_name, err
+                    ));
+                    continue;
+                }
+            };
+            if let Some((existing_action, existing_name)) = seen_bindings.get(&chord) {
+                if existing_action != &action {
+                    errors.push(format!(
+                        "Binding '{}' is used by actions '{}' and '{}'.",
+                        entry, existing_name, action_name
+                    ));
+                    continue;
+                }
+            } else {
+                seen_bindings.insert(chord, (action.clone(), action_name.clone()));
+            }
+            keymap.insert(chord, action.clone());
+        }
+    }
+    if !errors.is_empty() {
+        let mut message = String::from("Invalid keybindings config:");
+        for error in errors {
+            message.push_str("\n- ");
+            message.push_str(&error);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            message,
+        ));
+    }
+    Ok(())
+}
+
+fn action_from_name(name: &str) -> Option<KeyAction> {
+    let normalized = name.trim().to_ascii_lowercase().replace('-', "_");
+    match normalized.as_str() {
+        "quit" => Some(KeyAction::Quit),
+        "back" => Some(KeyAction::Back),
+        "next_view" => Some(KeyAction::NextView),
+        "navigate_up" => Some(KeyAction::NavigateUp),
+        "navigate_down" => Some(KeyAction::NavigateDown),
+        "navigate_left" => Some(KeyAction::NavigateLeft),
+        "navigate_right" => Some(KeyAction::NavigateRight),
+        "scroll_page_up" => Some(KeyAction::ScrollPageUp),
+        "scroll_page_down" => Some(KeyAction::ScrollPageDown),
+        "select" => Some(KeyAction::Select),
+        "help" => Some(KeyAction::Help),
+        "search" => Some(KeyAction::Search),
+        "backspace" => Some(KeyAction::Backspace),
+        "toggle_staging" => Some(KeyAction::ToggleStaging),
+        "fetch" => Some(KeyAction::Fetch),
+        "push" => Some(KeyAction::Push),
+        "pull" => Some(KeyAction::Pull),
+        "pane_narrow" => Some(KeyAction::PaneNarrow),
+        "pane_widen" => Some(KeyAction::PaneWiden),
+        "switch_module_list" => Some(KeyAction::SwitchModuleList),
+        _ => None,
+    }
+}
+
+fn parse_key_chord(raw: &str) -> Result<KeyChord, String> {
+    let mut modifiers = KeyModifiers::NONE;
+    let mut code: Option<KeyCode> = None;
+
+    for part in raw.split('+') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        let lowered = part.to_ascii_lowercase();
+        match lowered.as_str() {
+            "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
+            "alt" => modifiers |= KeyModifiers::ALT,
+            "shift" => modifiers |= KeyModifiers::SHIFT,
+            "esc" | "escape" => code = assign_key_code(code, KeyCode::Esc)?,
+            "enter" | "return" => code = assign_key_code(code, KeyCode::Enter)?,
+            "tab" => code = assign_key_code(code, KeyCode::Tab)?,
+            "backspace" => code = assign_key_code(code, KeyCode::Backspace)?,
+            "space" => code = assign_key_code(code, KeyCode::Char(' '))?,
+            "up" => code = assign_key_code(code, KeyCode::Up)?,
+            "down" => code = assign_key_code(code, KeyCode::Down)?,
+            "left" => code = assign_key_code(code, KeyCode::Left)?,
+            "right" => code = assign_key_code(code, KeyCode::Right)?,
+            "pageup" | "pgup" => code = assign_key_code(code, KeyCode::PageUp)?,
+            "pagedown" | "pgdn" => code = assign_key_code(code, KeyCode::PageDown)?,
+            _ => {
+                if lowered.len() == 1 {
+                    let ch = part.chars().next().ok_or_else(|| "Empty key".to_string())?;
+                    code = assign_key_code(code, KeyCode::Char(ch))?;
+                } else {
+                    return Err(format!("Unsupported key token '{}'", part));
+                }
+            }
+        }
+    }
+
+    let code = code.ok_or_else(|| "Missing key code".to_string())?;
+    Ok(KeyChord::new(code, modifiers))
+}
+
+fn assign_key_code(existing: Option<KeyCode>, next: KeyCode) -> Result<Option<KeyCode>, String> {
+    if existing.is_some() {
+        return Err("Multiple key codes in binding".to_string());
+    }
+    Ok(Some(next))
 }
 
 /// Action handler result: (should_quit, side_effects_callback)
@@ -117,18 +410,23 @@ pub struct ActionContext {
     // New view indices
     pub selected_commit_index: usize,
     pub selected_branch_index: usize,
+    pub selected_stash_index: usize,
     pub selected_module_index: usize,
     pub selected_developer_index: usize,
     pub cached_commits_len: usize,
     pub cached_branches_len: usize,
+    pub cached_stashes_len: usize,
     pub branch_create_mode: bool,
     pub branch_input_empty: bool,
+    pub stash_create_mode: bool,
+    pub stash_input_empty: bool,
     pub module_manager_in_developer_list: bool,
     pub module_create_mode: bool,
     pub module_edit_mode: bool,
     pub developer_create_mode: bool,
     pub module_assign_mode: bool,
     pub module_input_empty: bool,
+    pub selected_remote: Option<String>,
 }
 
 /// Stateless action processor: takes action + context, returns result + modified state
@@ -202,6 +500,19 @@ impl ActionProcessor {
                         ActionStateUpdate {
                             branch_create_mode: Some(false),
                             branch_input_clear: Some(()),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if ctx.stash_create_mode {
+                    return (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Cancelled stash creation".into()),
+                        },
+                        ActionStateUpdate {
+                            stash_create_mode: Some(false),
+                            stash_input_clear: Some(()),
                             ..Default::default()
                         },
                     );
@@ -349,6 +660,22 @@ impl ActionProcessor {
                     }
 
                     if ctx.focus == Focus::View
+                        && matches!(ctx.current_view, AppMode::Stashes)
+                        && ctx.stash_create_mode
+                    {
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate {
+                                stash_input_append: Some(c),
+                                ..Default::default()
+                            },
+                        );
+                    }
+
+                    if ctx.focus == Focus::View
                         && matches!(ctx.current_view, AppMode::ModuleManager)
                         && (ctx.module_create_mode
                             || ctx.module_edit_mode
@@ -382,20 +709,28 @@ impl ActionProcessor {
                         'f' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Fetching from origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Fetching from {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                fetch_requested: Some(()),
+                                fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
                         'p' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Pushing to origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Pushing to {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                push_requested: Some(()),
+                                push_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
@@ -414,10 +749,14 @@ impl ActionProcessor {
                         'f' => (
                             ActionResult {
                                 should_quit: false,
-                                status_message: Some("Fetching from origin...".into()),
+                                status_message: ctx
+                                    .selected_remote
+                                    .as_deref()
+                                    .map(|name| format!("Fetching from {}...", name))
+                                    .or_else(|| Some("No remotes configured".into())),
                             },
                             ActionStateUpdate {
-                                fetch_requested: Some(()),
+                                fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                                 ..Default::default()
                             },
                         ),
@@ -452,6 +791,114 @@ impl ActionProcessor {
                             },
                             ActionStateUpdate {
                                 branch_delete_requested: Some(()),
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::Stashes) {
+                    return match c {
+                        'n' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(
+                                    "Press Enter to start typing a stash message".into(),
+                                ),
+                            },
+                            ActionStateUpdate {
+                                stash_create_mode: Some(true),
+                                ..Default::default()
+                            },
+                        ),
+                        'a' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to apply".into()
+                                } else {
+                                    "Applying stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_apply_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
+                        'p' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to pop".into()
+                                } else {
+                                    "Popping stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_pop_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
+                        'd' if !ctx.stash_create_mode => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_stashes_len == 0 {
+                                    "No stashes to drop".into()
+                                } else {
+                                    "Dropping stash...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                stash_drop_requested: if ctx.cached_stashes_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    };
+                }
+
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::CommitHistory) {
+                    return match c {
+                        'c' => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_commits_len == 0 {
+                                    "No commits to cherry-pick".into()
+                                } else {
+                                    "Cherry-picking commit...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                cherry_pick_requested: if ctx.cached_commits_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
                                 ..Default::default()
                             },
                         ),
@@ -614,6 +1061,21 @@ impl ActionProcessor {
                         },
                         ActionStateUpdate {
                             branch_input_pop: Some(()),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.input_mode == InputMode::Typing
+                    && ctx.focus == Focus::View
+                    && matches!(ctx.current_view, AppMode::Stashes)
+                    && ctx.stash_create_mode
+                {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: None,
+                        },
+                        ActionStateUpdate {
+                            stash_input_pop: Some(()),
                             ..Default::default()
                         },
                     )
@@ -890,10 +1352,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Fetching from origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Fetching from {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            fetch_requested: Some(()),
+                            fetch_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
@@ -912,10 +1378,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Pushing to origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Pushing to {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            push_requested: Some(()),
+                            push_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
@@ -934,10 +1404,14 @@ impl ActionProcessor {
                     (
                         ActionResult {
                             should_quit: false,
-                            status_message: Some("Pulling from origin...".into()),
+                            status_message: ctx
+                                .selected_remote
+                                .as_deref()
+                                .map(|name| format!("Pulling from {}...", name))
+                                .or_else(|| Some("No remotes configured".into())),
                         },
                         ActionStateUpdate {
-                            pull_requested: Some(()),
+                            pull_requested: ctx.selected_remote.as_ref().map(|_| ()),
                             ..Default::default()
                         },
                     )
@@ -1100,6 +1574,49 @@ impl ActionProcessor {
                     ..Default::default()
                 },
             )
+        } else if matches!(ctx.current_view, AppMode::Stashes) {
+            if ctx.stash_create_mode {
+                if ctx.input_mode == InputMode::Normal {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Start typing a stash message".into()),
+                        },
+                        ActionStateUpdate {
+                            input_mode: Some(InputMode::Typing),
+                            ..Default::default()
+                        },
+                    )
+                } else if ctx.stash_input_empty {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Stash message cannot be empty".into()),
+                        },
+                        ActionStateUpdate::none(),
+                    )
+                } else {
+                    (
+                        ActionResult {
+                            should_quit: false,
+                            status_message: Some("Creating stash...".into()),
+                        },
+                        ActionStateUpdate {
+                            stash_create_requested: Some(()),
+                            input_mode: Some(InputMode::Normal),
+                            ..Default::default()
+                        },
+                    )
+                }
+            } else {
+                (
+                    ActionResult {
+                        should_quit: false,
+                        status_message: None,
+                    },
+                    ActionStateUpdate::none(),
+                )
+            }
         } else if matches!(ctx.current_view, AppMode::BranchManager) {
             if ctx.branch_create_mode {
                 if ctx.input_mode == InputMode::Normal {
@@ -1306,6 +1823,10 @@ impl ActionProcessor {
                     selected_commit_index: Some(ctx.selected_commit_index.saturating_sub(1)),
                     ..Default::default()
                 },
+                AppMode::Stashes => ActionStateUpdate {
+                    selected_stash_index: Some(ctx.selected_stash_index.saturating_sub(1)),
+                    ..Default::default()
+                },
                 AppMode::BranchManager => ActionStateUpdate {
                     selected_branch_index: Some(ctx.selected_branch_index.saturating_sub(1)),
                     ..Default::default()
@@ -1380,6 +1901,16 @@ impl ActionProcessor {
                     if ctx.selected_commit_index < ctx.cached_commits_len.saturating_sub(1) {
                         ActionStateUpdate {
                             selected_commit_index: Some(ctx.selected_commit_index + 1),
+                            ..Default::default()
+                        }
+                    } else {
+                        ActionStateUpdate::none()
+                    }
+                }
+                AppMode::Stashes => {
+                    if ctx.selected_stash_index < ctx.cached_stashes_len.saturating_sub(1) {
+                        ActionStateUpdate {
+                            selected_stash_index: Some(ctx.selected_stash_index + 1),
                             ..Default::default()
                         }
                     } else {
@@ -1524,6 +2055,7 @@ pub struct ActionStateUpdate {
     // New view selections
     pub selected_commit_index: Option<usize>,
     pub selected_branch_index: Option<usize>,
+    pub selected_stash_index: Option<usize>,
     pub selected_module_index: Option<usize>,
     pub selected_developer_index: Option<usize>,
 
@@ -1531,6 +2063,9 @@ pub struct ActionStateUpdate {
     pub commit_message_append: Option<char>,
     pub commit_message_pop: Option<()>,
     pub commit_message_clear: Option<()>,
+    pub stash_input_append: Option<char>,
+    pub stash_input_pop: Option<()>,
+    pub stash_input_clear: Option<()>,
 
     // Scroll state
     pub project_scroll_up: Option<usize>,
@@ -1559,11 +2094,18 @@ pub struct ActionStateUpdate {
     pub merge_focus_prev: Option<()>,
     pub navigate_settings_down: Option<()>,
 
+    // Stash create
+    pub stash_create_mode: Option<bool>,
+    pub stash_apply_requested: Option<()>,
+    pub stash_pop_requested: Option<()>,
+    pub stash_drop_requested: Option<()>,
+
     // Commands
     pub move_board_item: Option<()>,
     pub accept_merge_pane: Option<()>,
     pub toggle_setting: Option<()>,
     pub commit_requested: Option<()>,
+    pub stash_create_requested: Option<()>,
 
     // Branch operations
     pub branch_create_mode: Option<bool>,
@@ -1598,6 +2140,9 @@ pub struct ActionStateUpdate {
     pub fetch_requested: Option<()>,
     pub push_requested: Option<()>,
     pub pull_requested: Option<()>,
+
+    // Commit history actions
+    pub cherry_pick_requested: Option<()>,
 }
 
 impl ActionStateUpdate {
@@ -1814,5 +2359,60 @@ mod tests {
         assert!(update.focus.is_none());
         assert!(update.current_view.is_none());
         assert!(update.show_help.is_none());
+    }
+
+    #[test]
+    fn reports_invalid_keybindings_entries() {
+        let mut keymap = default_keymap();
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            "unknown_action".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+        bindings.insert(
+            "quit".to_string(),
+            BindingValue::Single("ctrl+bad".to_string()),
+        );
+        bindings.insert("help".to_string(), BindingValue::Multiple(Vec::new()));
+        bindings.insert("back".to_string(), BindingValue::Single("esc".to_string()));
+
+        let config = KeybindingsConfig { bindings };
+        let err = apply_keybindings(&mut keymap, config).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(msg.contains("Unknown action"));
+        assert!(msg.contains("Invalid binding"));
+        assert!(msg.contains("No bindings provided"));
+        assert_eq!(
+            keymap.get(&KeyChord::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Some(&KeyAction::Back)
+        );
+    }
+
+    #[test]
+    fn reports_conflicting_keybindings_across_actions() {
+        let mut keymap = default_keymap();
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            "quit".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+        bindings.insert(
+            "back".to_string(),
+            BindingValue::Single("ctrl+x".to_string()),
+        );
+
+        let config = KeybindingsConfig { bindings };
+        let err = apply_keybindings(&mut keymap, config).unwrap_err();
+        let msg = err.to_string();
+
+        assert!(msg.contains("Binding 'ctrl+x' is used by actions"));
+        assert!(msg.contains("quit"));
+        assert!(msg.contains("back"));
+        let resolved = keymap.get(&KeyChord::new(KeyCode::Char('x'), KeyModifiers::CONTROL));
+        assert!(matches!(
+            resolved,
+            Some(KeyAction::Quit) | Some(KeyAction::Back)
+        ));
     }
 }

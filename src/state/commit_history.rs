@@ -148,7 +148,7 @@ mod tests {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
         state.selected_index = 2;
-        
+
         assert!(state.navigate_up());
         assert_eq!(state.selected_index, 1);
     }
@@ -157,7 +157,7 @@ mod tests {
     fn test_navigate_up_at_top() {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
-        
+
         assert!(!state.navigate_up());
         assert_eq!(state.selected_index, 0);
     }
@@ -166,7 +166,7 @@ mod tests {
     fn test_navigate_down() {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
-        
+
         assert!(state.navigate_down());
         assert_eq!(state.selected_index, 1);
     }
@@ -176,7 +176,7 @@ mod tests {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
         state.selected_index = 2;
-        
+
         assert!(!state.navigate_down());
         assert_eq!(state.selected_index, 2);
     }
@@ -187,7 +187,7 @@ mod tests {
             scroll: 5,
             ..Default::default()
         };
-        
+
         state.scroll_up(3);
         assert_eq!(state.scroll, 2);
     }
@@ -198,7 +198,7 @@ mod tests {
             scroll: 2,
             ..Default::default()
         };
-        
+
         state.scroll_up(5);
         assert_eq!(state.scroll, 0);
     }
@@ -216,7 +216,7 @@ mod tests {
                 files_loaded: true,
             })
             .collect();
-        
+
         state.scroll_down(5, 10);
         assert_eq!(state.scroll, 5);
     }
@@ -235,7 +235,7 @@ mod tests {
             })
             .collect();
         state.scroll = 3;
-        
+
         state.scroll_down(10, 10);
         assert_eq!(state.scroll, 5); // max is 15 - 10 = 5
     }
@@ -245,7 +245,7 @@ mod tests {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
         state.selected_index = 1;
-        
+
         let commit = state.selected_commit().unwrap();
         assert_eq!(commit.hash, "def456");
         assert_eq!(commit.author, "Bob");
@@ -256,9 +256,9 @@ mod tests {
         let mut state = CommitHistoryState::new();
         state.selected_index = 5;
         state.scroll = 3;
-        
+
         state.update_commits(sample_commits());
-        
+
         assert_eq!(state.commit_count(), 3);
         assert_eq!(state.selected_index, 0);
         assert_eq!(state.scroll, 0);
@@ -269,7 +269,7 @@ mod tests {
         let mut state = CommitHistoryState::new();
         state.cached_commits = sample_commits();
         state.selected_index = 10;
-        
+
         state.clamp_selection();
         assert_eq!(state.selected_index, 2);
     }
@@ -278,7 +278,7 @@ mod tests {
     fn test_clamp_selection_empty() {
         let mut state = CommitHistoryState::new();
         state.selected_index = 5;
-        
+
         state.clamp_selection();
         assert_eq!(state.selected_index, 0);
     }

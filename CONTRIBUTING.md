@@ -23,7 +23,7 @@ The Development wiki covers:
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/forge.git
+   git clone https://github.com/Princelad/forge.git
    cd forge
    ```
 3. **Install Rust** (1.70+): https://rustup.rs/
