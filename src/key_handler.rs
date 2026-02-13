@@ -882,6 +882,36 @@ impl ActionProcessor {
                     };
                 }
 
+                if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::CommitHistory) {
+                    return match c {
+                        'c' => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(if ctx.cached_commits_len == 0 {
+                                    "No commits to cherry-pick".into()
+                                } else {
+                                    "Cherry-picking commit...".into()
+                                }),
+                            },
+                            ActionStateUpdate {
+                                cherry_pick_requested: if ctx.cached_commits_len == 0 {
+                                    None
+                                } else {
+                                    Some(())
+                                },
+                                ..Default::default()
+                            },
+                        ),
+                        _ => (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: None,
+                            },
+                            ActionStateUpdate::none(),
+                        ),
+                    };
+                }
+
                 if ctx.focus == Focus::View && matches!(ctx.current_view, AppMode::ModuleManager) {
                     return match c {
                         'a' if !ctx.module_create_mode
@@ -2110,6 +2140,9 @@ pub struct ActionStateUpdate {
     pub fetch_requested: Option<()>,
     pub push_requested: Option<()>,
     pub pull_requested: Option<()>,
+
+    // Commit history actions
+    pub cherry_pick_requested: Option<()>,
 }
 
 impl ActionStateUpdate {

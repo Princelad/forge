@@ -832,7 +832,10 @@ impl App {
             ),
             AppMode::CommitHistory => {
                 let count = self.commit_history.cached_commits.len();
-                format!("Commit History: {} commits (↑↓ Navigate)", count)
+                format!(
+                    "Commit History: {} commits (↑↓ Navigate, c Cherry-pick)",
+                    count
+                )
             }
             AppMode::Stashes => {
                 let count = self.stashes.cached_stashes.len();
@@ -1362,6 +1365,9 @@ impl App {
         }
         if update.pull_requested.is_some() {
             self.perform_pull();
+        }
+        if update.cherry_pick_requested.is_some() {
+            self.perform_cherry_pick();
         }
     }
 
@@ -1927,6 +1933,43 @@ impl App {
                 }
                 Err(e) => {
                     self.report_git_error("Failed to drop stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_cherry_pick(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+
+        let commit = match self
+            .commit_history
+            .cached_commits
+            .get(self.commit_history.selected_index)
+        {
+            Some(commit) => commit,
+            None => {
+                self.status_message = "No commit selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.cherry_pick_commit(&commit.hash) {
+                Ok(new_oid) => {
+                    self.status_message = success(&format!(
+                        "Cherry-picked {} (new {})",
+                        &commit.hash[..commit.hash.len().min(7)],
+                        &new_oid[..new_oid.len().min(7)]
+                    ));
+                    if let Err(e) = self.refresh_changes_summary(true) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    self.report_git_error("Cherry-pick failed", &e);
                 }
             }
         }
