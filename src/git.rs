@@ -1037,6 +1037,78 @@ impl GitClient {
         Ok(files)
     }
 
+    /// Cherry-pick a single commit onto the current HEAD.
+    ///
+    /// Returns the new commit hash on success.
+    pub fn cherry_pick_commit(&self, commit_hash: &str) -> Result<String> {
+        let oid = git2::Oid::from_str(commit_hash)
+            .map_err(|_| color_eyre::eyre::eyre!("Invalid commit hash"))?;
+        let commit = self.repo.find_commit(oid)?;
+
+        if commit.parent_count() > 1 {
+            return Err(color_eyre::eyre::eyre!(
+                "Cherry-pick of merge commits is not supported"
+            ));
+        }
+
+        self.repo.cherrypick(&commit, None)?;
+
+        let mut index = self.repo.index()?;
+
+        if index.has_conflicts() {
+            let conflicts: Vec<_> = index
+                .conflicts()
+                .ok()
+                .and_then(|c| {
+                    c.flatten()
+                        .filter_map(|conflict| {
+                            conflict
+                                .our
+                                .as_ref()
+                                .and_then(|e| std::str::from_utf8(&e.path).ok())
+                                .map(|s| s.to_string())
+                        })
+                        .collect::<Vec<_>>()
+                        .into()
+                })
+                .unwrap_or_default();
+
+            let conflict_list = if conflicts.is_empty() {
+                "unknown files".to_string()
+            } else {
+                conflicts.join(", ")
+            };
+
+            return Err(color_eyre::eyre::eyre!(
+                "Cherry-pick conflict in: {}. Resolve conflicts manually.",
+                conflict_list
+            ));
+        }
+
+        let tree_id = index.write_tree()?;
+        let tree = self.repo.find_tree(tree_id)?;
+        let signature = self.repo.signature()?;
+        let message = commit.message().unwrap_or("cherry-pick");
+
+        let head_commit = self.repo.head()?.peel_to_commit()?;
+
+        let new_oid = self.repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &[&head_commit],
+        )?;
+
+        self.repo.cleanup_state()?;
+
+        self.repo
+            .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+
+        Ok(new_oid.to_string())
+    }
+
     /// Fetch from a remote repository with progress tracking
     ///
     /// Returns the number of objects received

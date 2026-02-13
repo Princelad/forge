@@ -832,7 +832,10 @@ impl App {
             ),
             AppMode::CommitHistory => {
                 let count = self.commit_history.cached_commits.len();
-                format!("Commit History: {} commits (↑↓ Navigate)", count)
+                format!(
+                    "Commit History: {} commits (↑↓ Navigate, c Cherry-pick)",
+                    count
+                )
             }
             AppMode::Stashes => {
                 let count = self.stashes.cached_stashes.len();
@@ -854,7 +857,7 @@ impl App {
                 self.board.current_column_name()
             ),
             AppMode::MergeVisualizer => format!(
-                "Merge: {} (←→ Pane, ↑↓ File)",
+                "Merge: {} (←→ Pane, ↑↓ File, Enter Accept)",
                 match self.merge.focus {
                     MergePaneFocus::Files => "Files",
                     MergePaneFocus::Local => "Local",
@@ -1362,6 +1365,9 @@ impl App {
         }
         if update.pull_requested.is_some() {
             self.perform_pull();
+        }
+        if update.cherry_pick_requested.is_some() {
+            self.perform_cherry_pick();
         }
     }
 
@@ -1927,6 +1933,62 @@ impl App {
                 }
                 Err(e) => {
                     self.report_git_error("Failed to drop stash", &e);
+                }
+            }
+        }
+    }
+
+    fn perform_cherry_pick(&mut self) {
+        if !self.ensure_repo_ready() {
+            return;
+        }
+
+        let commit = match self
+            .commit_history
+            .cached_commits
+            .get(self.commit_history.selected_index)
+        {
+            Some(commit) => commit,
+            None => {
+                self.status_message = "No commit selected".into();
+                return;
+            }
+        };
+
+        if let Some(client) = &self.git_client {
+            match client.cherry_pick_commit(&commit.hash) {
+                Ok(new_oid) => {
+                    self.status_message = success(&format!(
+                        "Cherry-picked {} (new {})",
+                        &commit.hash[..commit.hash.len().min(7)],
+                        &new_oid[..new_oid.len().min(7)]
+                    ));
+                    if let Err(e) = self.refresh_changes_summary(true) {
+                        self.report_git_error("Failed to refresh changes", &e);
+                    }
+                    self.refresh_view_cache();
+                }
+                Err(e) => {
+                    let message = e.to_string();
+                    if message.to_lowercase().contains("conflict") {
+                        self.merge.clear_resolutions();
+                        self.merge.focus = MergePaneFocus::Files;
+                        self.merge.selected_file_index = 0;
+                        self.merge.scroll = 0;
+                        self.current_view = AppMode::MergeVisualizer;
+                        self.menu_selected_index = AppMode::MergeVisualizer.menu_index();
+                        self.focus = Focus::View;
+                        self.input_mode = InputMode::Normal;
+                        if let Err(err) = self.refresh_merge_conflicts() {
+                            self.report_git_error("Failed to list merge conflicts", &err);
+                        } else {
+                            self.status_message = error(
+                                "Cherry-pick conflict. Resolve in Merge view, then commit from Changes.",
+                            );
+                        }
+                    } else {
+                        self.report_git_error("Cherry-pick failed", &e);
+                    }
                 }
             }
         }

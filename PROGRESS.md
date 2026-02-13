@@ -2,8 +2,6 @@
 
 - Pending:
 
-- Cherry-pick: single commit flow.
-- Cherry-pick: conflict handling UX.
 - Troubleshooting guide: common Git errors.
 - Troubleshooting guide: recovery steps.
 - Integration tests: repo fixture helpers.
@@ -24,3 +22,5 @@
 - Stash: create stash with message.
 - Stash: apply and pop stash.
 - Stash: drop stash entry.
+- Cherry-pick: single commit flow.
+- Cherry-pick: conflict handling UX.
