@@ -1051,12 +1051,9 @@ impl GitClient {
             ));
         }
 
-        let head = self.repo.head()?;
-        let head_commit = head.peel_to_commit()?;
+        self.repo.cherrypick(&commit, None)?;
 
-        let mut index = self
-            .repo
-            .cherrypick_commit(&commit, &head_commit, 0, None)?;
+        let mut index = self.repo.index()?;
 
         if index.has_conflicts() {
             let conflicts: Vec<_> = index
@@ -1088,10 +1085,12 @@ impl GitClient {
             ));
         }
 
-        let tree_id = index.write_tree_to(&self.repo)?;
+        let tree_id = index.write_tree()?;
         let tree = self.repo.find_tree(tree_id)?;
         let signature = self.repo.signature()?;
         let message = commit.message().unwrap_or("cherry-pick");
+
+        let head_commit = self.repo.head()?.peel_to_commit()?;
 
         let new_oid = self.repo.commit(
             Some("HEAD"),
@@ -1101,6 +1100,8 @@ impl GitClient {
             &tree,
             &[&head_commit],
         )?;
+
+        self.repo.cleanup_state()?;
 
         self.repo
             .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
