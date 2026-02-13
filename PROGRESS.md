@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Troubleshooting guide: common Git errors.
 - Troubleshooting guide: recovery steps.
 - Integration tests: repo fixture helpers.
 - Integration tests: core Git ops (status, stage, commit).
@@ -24,3 +23,4 @@
 - Stash: drop stash entry.
 - Cherry-pick: single commit flow.
 - Cherry-pick: conflict handling UX.
+- Troubleshooting guide: common Git errors.
