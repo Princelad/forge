@@ -2,7 +2,7 @@
 
 **A developer-first, terminal-based Git-aware project management system.**
 
-Current release: v0.4.0
+Current release: v0.3.1
 
 Manage Git repositories, view diffs, track tasks, and collaborate—all from your terminal without leaving your coding flow.
 
