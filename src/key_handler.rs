@@ -2155,6 +2155,49 @@ impl ActionStateUpdate {
 mod tests {
     use super::*;
 
+    fn base_ctx() -> ActionContext {
+        ActionContext {
+            focus: Focus::View,
+            input_mode: InputMode::Normal,
+            current_view: AppMode::Dashboard,
+            show_help: false,
+            search_active: false,
+            menu_selected_index: 0,
+            menu_len: 9,
+            selected_project_index: 0,
+            selected_change_index: 0,
+            selected_board_column: 0,
+            selected_board_item: 0,
+            selected_merge_file_index: 0,
+            selected_setting_index: 0,
+            commit_message_empty: true,
+            has_git_client: true,
+            changes_pane_ratio: 50,
+            commit_pane_ratio: 50,
+            module_pane_ratio: 50,
+            dashboard_pane_ratio: 50,
+            selected_commit_index: 0,
+            selected_branch_index: 0,
+            selected_stash_index: 0,
+            selected_module_index: 0,
+            selected_developer_index: 0,
+            cached_commits_len: 0,
+            cached_branches_len: 0,
+            cached_stashes_len: 0,
+            branch_create_mode: false,
+            branch_input_empty: true,
+            stash_create_mode: false,
+            stash_input_empty: true,
+            module_manager_in_developer_list: false,
+            module_create_mode: false,
+            module_edit_mode: false,
+            developer_create_mode: false,
+            module_assign_mode: false,
+            module_input_empty: true,
+            selected_remote: None,
+        }
+    }
+
     #[test]
     fn maps_basic_keys() {
         let mut kh = KeyHandler::new();
@@ -2414,5 +2457,73 @@ mod tests {
             resolved,
             Some(KeyAction::Quit) | Some(KeyAction::Back)
         ));
+    }
+
+    #[test]
+    fn search_only_available_on_dashboard() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::Changes;
+        let (result, update) = ActionProcessor::process(KeyAction::Search, &ctx);
+        assert_eq!(
+            result.status_message,
+            Some("Search is available only in Dashboard".to_string())
+        );
+        assert!(update.search_active.is_none());
+    }
+
+    #[test]
+    fn search_toggles_on_dashboard() {
+        let ctx = base_ctx();
+        let (result, update) = ActionProcessor::process(KeyAction::Search, &ctx);
+        assert!(result.should_quit == false);
+        assert_eq!(update.search_active, Some(true));
+        assert_eq!(update.search_buffer, Some(String::new()));
+        assert_eq!(update.selected_project_index, Some(0));
+    }
+
+    #[test]
+    fn fetch_requires_remote_selection() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::Changes;
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('f'), &ctx);
+        assert_eq!(
+            result.status_message,
+            Some("No remotes configured".to_string())
+        );
+        assert!(update.fetch_requested.is_none());
+
+        ctx.selected_remote = Some("origin".to_string());
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('f'), &ctx);
+        assert_eq!(
+            result.status_message,
+            Some("Fetching from origin...".to_string())
+        );
+        assert!(update.fetch_requested.is_some());
+    }
+
+    #[test]
+    fn stash_apply_noop_when_empty() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::Stashes;
+        ctx.cached_stashes_len = 0;
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('a'), &ctx);
+        assert_eq!(
+            result.status_message,
+            Some("No stashes to apply".to_string())
+        );
+        assert!(update.stash_apply_requested.is_none());
+    }
+
+    #[test]
+    fn cherry_pick_noop_when_empty() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::CommitHistory;
+        ctx.cached_commits_len = 0;
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('c'), &ctx);
+        assert_eq!(
+            result.status_message,
+            Some("No commits to cherry-pick".to_string())
+        );
+        assert!(update.cherry_pick_requested.is_none());
     }
 }

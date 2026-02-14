@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Testing: expand integration tests and add UI workflow coverage.
 - AI/ML foundations: commit message suggestions MVP.
 - Docs: video tutorials.
 - Docs: use case examples.
@@ -11,6 +10,7 @@
 
 - Completed:
 
+- Testing: expand integration tests and add UI workflow coverage.
 - Repo health UX: surface recovery actions inline for common Git failures.
 - Remote branches: tracking + switch/manage remote-only branches.
 - Upstream tracking: ahead/behind display and sync status.
