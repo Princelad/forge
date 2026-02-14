@@ -168,6 +168,39 @@ impl RepoHealthReport {
 
         format!("{}\n\n{}", base, self.details())
     }
+
+    pub fn inline_recovery_hint(&self) -> Option<String> {
+        self.recovery_steps
+            .first()
+            .map(|step| format!("Try: {}", step))
+    }
+}
+
+fn first_action_line(detail: &str) -> Option<String> {
+    for line in detail.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('•') {
+            let action = trimmed.trim_start_matches('•').trim();
+            if !action.is_empty() {
+                return Some(action.to_string());
+            }
+        }
+
+        let mut chars = trimmed.chars();
+        if let Some(first) = chars.next() {
+            if first.is_ascii_digit() {
+                let mut rest = trimmed[first.len_utf8()..].trim_start();
+                if rest.starts_with('.') || rest.starts_with(')') {
+                    rest = rest[1..].trim_start();
+                    if !rest.is_empty() {
+                        return Some(rest.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
 
 fn push_unique_step(steps: &mut Vec<String>, step: &str) {
@@ -1857,6 +1890,11 @@ impl GitClient {
             error_str
         )
     }
+
+    pub fn inline_recovery_hint(e: &color_eyre::eyre::Report) -> Option<String> {
+        let detail = Self::explain_error(e);
+        first_action_line(&detail).map(|action| format!("Try: {}", action))
+    }
 }
 
 #[cfg(test)]
@@ -2096,6 +2134,13 @@ mod tests {
             explanation.contains("troubleshooting"),
             "Should provide troubleshooting steps"
         );
+    }
+    #[test]
+    fn test_inline_recovery_hint_prefers_action_line() {
+        let err = color_eyre::eyre::eyre!("authentication failed for remote");
+        let hint = GitClient::inline_recovery_hint(&err).expect("expected hint");
+        assert!(hint.starts_with("Try:"));
+        assert!(hint.contains("SSH keys"));
     }
 }
 

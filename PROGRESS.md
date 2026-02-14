@@ -2,7 +2,6 @@
 
 - Pending:
 
-- Repo health UX: surface recovery actions inline for common Git failures.
 - Testing: expand integration tests and add UI workflow coverage.
 - AI/ML foundations: commit message suggestions MVP.
 - Docs: video tutorials.
@@ -12,6 +11,7 @@
 
 - Completed:
 
+- Repo health UX: surface recovery actions inline for common Git failures.
 - Remote branches: tracking + switch/manage remote-only branches.
 - Upstream tracking: ahead/behind display and sync status.
 - Docs audit: fix Features/Architecture inconsistencies and stale dependency versions.
