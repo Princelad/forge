@@ -220,7 +220,11 @@ impl App {
                 let mut last_completion_message = None;
 
                 let changes = if health.has_blocking_issues() {
-                    let msg = error(&health.summary());
+                    let mut msg = health.summary();
+                    if let Some(hint) = health.inline_recovery_hint() {
+                        msg = format!("{} | {}", msg, hint);
+                    }
+                    let msg = error(&msg);
                     status_message = msg.clone();
                     last_completion_message = Some(msg);
                     Vec::new()
@@ -465,7 +469,11 @@ impl App {
     fn ensure_repo_ready(&mut self) -> bool {
         if let Some(report) = self.refresh_repo_health() {
             if report.has_blocking_issues() {
-                let msg = error(&report.summary());
+                let mut msg = report.summary();
+                if let Some(hint) = report.inline_recovery_hint() {
+                    msg = format!("{} | {}", msg, hint);
+                }
+                let msg = error(&msg);
                 self.status_message = msg.clone();
                 self.last_completion_message = Some(msg);
                 return false;
@@ -476,7 +484,18 @@ impl App {
 
     fn report_git_error(&mut self, context: &str, e: &color_eyre::eyre::Report) {
         let detail = git::GitClient::explain_error(e);
-        let msg = error(&format!("{}: {}", context, detail));
+        let summary = detail.lines().next().unwrap_or(detail.as_str());
+        let mut msg = format!("{}: {}", context, summary);
+        let mut hint = git::GitClient::inline_recovery_hint(e);
+        if hint.is_none() {
+            if let Some(report) = self.refresh_repo_health() {
+                hint = report.inline_recovery_hint();
+            }
+        }
+        if let Some(hint) = hint {
+            msg = format!("{} | {}", msg, hint);
+        }
+        let msg = error(&msg);
         self.status_message = msg.clone();
         self.last_completion_message = Some(msg);
     }
