@@ -5,6 +5,9 @@
 - Repo health UX: surface recovery actions inline for common Git failures.
 - Testing: expand integration tests and add UI workflow coverage.
 - AI/ML foundations: commit message suggestions MVP.
+- Docs: video tutorials.
+- Docs: use case examples.
+- Docs: architecture deep-dive.
 
 
 - Completed:
