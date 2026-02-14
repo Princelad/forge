@@ -2,20 +2,16 @@
 
 - Pending:
 
-- Remote branches: tracking + switch/manage remote-only branches.
-	- List remote branches in Branch Manager (distinct marker).
-	- Allow checkout of remote branch to create local tracking branch.
-	- Show remote branch deletion action (safe-guarded).
-	- Cache/refresh remote branch list on view enter.
-- Upstream tracking: ahead/behind display and sync status.
 - Repo health UX: surface recovery actions inline for common Git failures.
-- Docs audit: fix Features/Architecture inconsistencies and stale dependency versions.
 - Testing: expand integration tests and add UI workflow coverage.
 - AI/ML foundations: commit message suggestions MVP.
 
 
 - Completed:
 
+- Remote branches: tracking + switch/manage remote-only branches.
+- Upstream tracking: ahead/behind display and sync status.
+- Docs audit: fix Features/Architecture inconsistencies and stale dependency versions.
 - Remote ops: wire fetch/push keybindings to actions.
 - Remote ops: surface remote selection (beyond hardcoded origin).
 - Merge: apply accepted pane as real conflict resolution flow.
