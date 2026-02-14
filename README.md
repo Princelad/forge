@@ -19,12 +19,13 @@ cargo build --release
 
 - 🔀 **Git Integration** — Real-time file status and diff preview
 - 🌐 **Remote Operations** — Fetch, pull, and push with progress + cancellation
+- 🧰 **Stash & Cherry-pick** — Manage stashes and cherry-pick commits
 - 📋 **Project Board** — Kanban task tracking (Pending → Current → Completed)
 - 🔗 **Branch Management** — Create, switch, and delete branches
 - 📝 **Commit History** — Browse and inspect commits
 - 👥 **Team Management** — Track modules and developers
 - 🔀 **Merge Visualization** — Side-by-side local/incoming previews with accept markers
-- ⚙️ **Customizable** — Theme switching, notifications, and autosync
+- ⚙️ **Customizable** — Theme switching, notifications, autosync, and keybindings
 - ⌨️ **Keyboard-Driven** — Fully navigable without mouse
 
 ## Documentation
@@ -69,8 +70,8 @@ cd /path/to/your/repo
 2. **Stage files** with Space
 3. **Commit** with Enter
 4. **View help** with `?`
-5. **Fetch** with Alt+F (Changes view)
-6. **Push** with Alt+P (Changes view)
+5. **Fetch** with `f` (Dashboard or Changes view)
+6. **Push** with `p` (Changes view)
 7. **Pull** with Ctrl+L (Changes view)
 8. **Quit** with Ctrl+C
 
