@@ -3,7 +3,32 @@
 - Pending:
 
 - AI/ML foundations: commit message suggestions MVP.
-	- Define MVP goals, non-goals, and acceptance criteria.
+	- [x] Define MVP goals, non-goals, and acceptance criteria.
+		- **MVP Goals:**
+			- Primary: Provide intelligent commit message suggestions based on staged changes
+			- Diff analysis: Parse staged diffs, identify files/scopes/change types, normalize text
+			- Suggestion generation: Generate 1-3 suggestions following conventional commit format
+			- UX: Display in Changes view panel, single-keypress accept, editable before commit, fallback messaging
+			- Configurability: Enable/disable, max suggestions (1-5), max length (50-100 chars)
+			- Integration: Seamless integration, rule-based heuristic engine (no ML for MVP)
+		- **Non-Goals:**
+			- No ML models (on-device or external API)
+			- No learning from commit history
+			- No issue tracker integration
+			- No merge commit generation
+			- No multi-line commit bodies (MVP limited to single-line summaries)
+			- No custom user rules or project-specific conventions
+		- **Acceptance Criteria:**
+			- F1: Display 1-3 suggestions for staged changes
+			- F2: Suggestions follow conventional commit format (feat/fix/refactor/docs/style/test/chore)
+			- F3: Scope detection when possible (e.g., `(api)`, `(ui)`)
+			- F4: Keypress accepts suggestion into commit input
+			- F5: Accepted suggestions are editable before commit
+			- F6-F8: Binary exclusion, size limits, secret redaction
+			- F9: Branch name pattern extraction for issue keys
+			- F10-F13: Fallback messaging, enable/disable settings, configurable counts/lengths
+			- NF1-NF5: Performance (<100ms for 1K lines, <500ms for 10K lines), no network calls, no persistent storage
+			- T1-T5: Trait-based engine, rule-based default, structured diff output, unit-testable, integration tests
 	- Inventory current commit flow and integration points.
 	- Identify data sources for suggestions (staged diff, status, previous messages).
 	- Decide on on-device heuristic vs. local ML baseline for MVP.
