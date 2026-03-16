@@ -2,6 +2,8 @@
 //!
 //! Manages Git staging interface and commit message input.
 
+use crate::suggestions::CommitSuggestion;
+
 /// State for the Changes view (Git staging/commit interface).
 ///
 /// Handles file selection, staging status, and commit message composition.
@@ -17,6 +19,10 @@ pub struct ChangesState {
     pub changes_pane_ratio: u16,
     /// Pane ratio for commit message area (percentage).
     pub commit_pane_ratio: u16,
+    /// Ranked list of suggested commit messages from the engine.
+    pub suggestions: Vec<CommitSuggestion>,
+    /// Index of the highlighted suggestion in the suggestions list.
+    pub selected_suggestion_index: usize,
 }
 
 impl ChangesState {
@@ -28,6 +34,8 @@ impl ChangesState {
             commit_message: String::new(),
             changes_pane_ratio: 35,
             commit_pane_ratio: 50,
+            suggestions: Vec::new(),
+            selected_suggestion_index: 0,
         }
     }
 
@@ -125,6 +133,59 @@ impl ChangesState {
     /// Resets selection to valid range for the given item count.
     pub fn clamp_selection(&mut self, max_items: usize) {
         self.selected_index = self.selected_index.min(max_items.saturating_sub(1));
+    }
+
+    /// Returns the number of available suggestions.
+    pub fn suggestion_count(&self) -> usize {
+        self.suggestions.len()
+    }
+
+    /// Navigates to the previous suggestion.
+    ///
+    /// Returns `true` if the selection changed.
+    pub fn navigate_suggestion_up(&mut self) -> bool {
+        if self.suggestions.is_empty() || self.selected_suggestion_index == 0 {
+            return false;
+        }
+        self.selected_suggestion_index -= 1;
+        true
+    }
+
+    /// Navigates to the next suggestion.
+    ///
+    /// Returns `true` if the selection changed.
+    pub fn navigate_suggestion_down(&mut self) -> bool {
+        let max = self.suggestions.len().saturating_sub(1);
+        if self.selected_suggestion_index < max {
+            self.selected_suggestion_index += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Applies the currently highlighted suggestion as the commit message.
+    ///
+    /// Returns `true` if a suggestion was applied.
+    pub fn apply_selected_suggestion(&mut self) -> bool {
+        if let Some(s) = self.suggestions.get(self.selected_suggestion_index) {
+            self.commit_message = s.formatted();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Replaces the current suggestion list and resets the selection index.
+    pub fn set_suggestions(&mut self, suggestions: Vec<CommitSuggestion>) {
+        self.selected_suggestion_index = 0;
+        self.suggestions = suggestions;
+    }
+
+    /// Clears all suggestions and resets the selection index.
+    pub fn clear_suggestions(&mut self) {
+        self.suggestions.clear();
+        self.selected_suggestion_index = 0;
     }
 }
 
@@ -250,5 +311,92 @@ mod tests {
         };
         state.clamp_selection(10);
         assert_eq!(state.selected_index, 9);
+    }
+
+    fn make_suggestion(commit_type: &str, message: &str) -> CommitSuggestion {
+        CommitSuggestion {
+            commit_type: commit_type.to_string(),
+            scope: None,
+            message: message.to_string(),
+            confidence: 0.8,
+        }
+    }
+
+    #[test]
+    fn test_suggestions_default_empty() {
+        let state = ChangesState::new();
+        assert!(state.suggestions.is_empty());
+        assert_eq!(state.selected_suggestion_index, 0);
+    }
+
+    #[test]
+    fn test_set_suggestions_resets_index() {
+        let mut state = ChangesState::new();
+        state.selected_suggestion_index = 2;
+        state.set_suggestions(vec![make_suggestion("feat", "add login")]);
+        assert_eq!(state.selected_suggestion_index, 0);
+        assert_eq!(state.suggestion_count(), 1);
+    }
+
+    #[test]
+    fn test_navigate_suggestion_down() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![
+            make_suggestion("feat", "first"),
+            make_suggestion("fix", "second"),
+        ]);
+        assert!(state.navigate_suggestion_down());
+        assert_eq!(state.selected_suggestion_index, 1);
+        assert!(!state.navigate_suggestion_down());
+    }
+
+    #[test]
+    fn test_navigate_suggestion_up() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![
+            make_suggestion("feat", "first"),
+            make_suggestion("fix", "second"),
+        ]);
+        state.selected_suggestion_index = 1;
+        assert!(state.navigate_suggestion_up());
+        assert_eq!(state.selected_suggestion_index, 0);
+        assert!(!state.navigate_suggestion_up());
+    }
+
+    #[test]
+    fn test_apply_selected_suggestion_sets_commit_message() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![make_suggestion("docs", "update readme")]);
+        assert!(state.apply_selected_suggestion());
+        assert_eq!(state.commit_message, "docs: update readme");
+    }
+
+    #[test]
+    fn test_apply_selected_suggestion_with_scope() {
+        let mut state = ChangesState::new();
+        state.suggestions = vec![CommitSuggestion {
+            commit_type: "feat".to_string(),
+            scope: Some("auth".to_string()),
+            message: "add oauth".to_string(),
+            confidence: 0.9,
+        }];
+        state.apply_selected_suggestion();
+        assert_eq!(state.commit_message, "feat(auth): add oauth");
+    }
+
+    #[test]
+    fn test_apply_selected_suggestion_on_empty_list_returns_false() {
+        let mut state = ChangesState::new();
+        assert!(!state.apply_selected_suggestion());
+        assert!(state.commit_message.is_empty());
+    }
+
+    #[test]
+    fn test_clear_suggestions() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![make_suggestion("fix", "msg")]);
+        state.clear_suggestions();
+        assert!(state.suggestions.is_empty());
+        assert_eq!(state.selected_suggestion_index, 0);
     }
 }

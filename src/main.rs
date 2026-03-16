@@ -14,6 +14,7 @@ pub mod pages;
 pub mod screen;
 pub mod state;
 pub mod status_symbols;
+pub mod suggestions;
 pub mod ui_utils;
 use async_task::{GitOperation, TaskManager};
 use data::ModuleStatus;
@@ -46,6 +47,12 @@ pub struct AppSettings {
     pub theme: Theme,
     pub notifications: bool,
     pub autosync: bool,
+    /// Commit message suggestion engine configuration.
+    ///
+    /// Uses `#[serde(default)]` so that existing config files written
+    /// before this field existed will deserialise without error.
+    #[serde(default)]
+    pub suggestions: suggestions::SuggestionConfig,
 }
 
 impl Default for AppSettings {
@@ -54,6 +61,7 @@ impl Default for AppSettings {
             theme: Theme::Default,
             notifications: true,
             autosync: false,
+            suggestions: suggestions::SuggestionConfig::default(),
         }
     }
 }

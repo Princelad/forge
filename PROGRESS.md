@@ -3,52 +3,40 @@
 - Pending:
 
 - AI/ML foundations: commit message suggestions MVP.
-	- [x] Define MVP goals, non-goals, and acceptance criteria.
-		- **MVP Goals:**
-			- Primary: Provide intelligent commit message suggestions based on staged changes
-			- Diff analysis: Parse staged diffs, identify files/scopes/change types, normalize text
-			- Suggestion generation: Generate 1-3 suggestions following conventional commit format
-			- UX: Display in Changes view panel, single-keypress accept, editable before commit, fallback messaging
-			- Configurability: Enable/disable, max suggestions (1-5), max length (50-100 chars)
-			- Integration: Seamless integration, rule-based heuristic engine (no ML for MVP)
-		- **Non-Goals:**
-			- No ML models (on-device or external API)
-			- No learning from commit history
-			- No issue tracker integration
-			- No merge commit generation
-			- No multi-line commit bodies (MVP limited to single-line summaries)
-			- No custom user rules or project-specific conventions
-		- **Acceptance Criteria:**
-			- F1: Display 1-3 suggestions for staged changes
-			- F2: Suggestions follow conventional commit format (feat/fix/refactor/docs/style/test/chore)
-			- F3: Scope detection when possible (e.g., `(api)`, `(ui)`)
-			- F4: Keypress accepts suggestion into commit input
-			- F5: Accepted suggestions are editable before commit
-			- F6-F8: Binary exclusion, size limits, secret redaction
-			- F9: Branch name pattern extraction for issue keys
-			- F10-F13: Fallback messaging, enable/disable settings, configurable counts/lengths
-			- NF1-NF5: Performance (<100ms for 1K lines, <500ms for 10K lines), no network calls, no persistent storage
-			- T1-T5: Trait-based engine, rule-based default, structured diff output, unit-testable, integration tests
-	- Inventory current commit flow and integration points.
-	- Identify data sources for suggestions (staged diff, status, previous messages).
-	- Decide on on-device heuristic vs. local ML baseline for MVP.
-	- Draft prompt/template format for suggestions output.
-	- Create suggestion generation API surface (trait or function) in codebase.
-	- Implement diff summarization (files, hunks, scopes).
-	- Normalize diff text (strip binaries, limit size, redact secrets).
-	- Add commit context builder (branch name, issue keys, scope).
-	- Implement baseline suggestion engine (rule-based).
-	- Add ranking/deduping logic for multiple suggestions.
-	- Add configurable max suggestions and length limits.
-	- Wire into UI: new panel/section for suggestions.
-	- Add keybinding to accept and edit a suggestion.
-	- Add fallback messaging when no suggestions available.
-	- Add settings for enable/disable and behavior.
-	- Add telemetry/logging hooks for debug (local only).
-	- Add unit tests for diff summarization and suggestion rules.
-	- Add integration test for suggestion flow in commit screen.
-	- Update docs with usage and limitations.
-	- Add entry in CHANGELOG for MVP feature.
+  - [x] Inventory current commit flow and integration points.
+  - [x] Identify data sources for suggestions (staged diff, status, branch name).
+  - [x] Decide on rule-based heuristic engine (no ML for MVP).
+  - Phase 1: Core Infrastructure
+    - [x] Create `src/suggestions/` module (mod.rs, engine.rs, rules.rs, diff.rs, context.rs)
+    - [x] Define `CommitSuggestion` struct (type, scope, message, confidence)
+    - [x] Define `SuggestionEngine` trait for testability
+    - [x] Extend `AppSettings` with suggestion config (enabled, max_suggestions, max_length)
+    - [x] Extend `ChangesState` with suggestions list and selected index
+  - Phase 2: Suggestion Engine Implementation
+    - Implement diff analysis: extract files, scopes, change types
+    - Implement text normalization: strip binaries, limit size, redact secrets
+    - Implement branch context: extract issue keys from branch names
+    - Implement rule-based type detection (file extension → commit type)
+    - Implement suggestion generation with ranking/deduplication
+  - Phase 3: UI Integration
+    - Update `ChangesPage` to render suggestions panel
+    - Add suggestion keybindings (1-3 to accept, or Tab+Enter pattern)
+    - Wire suggestion generation to staged changes changes
+    - Allow editing after accepting suggestion
+  - Phase 4: Configuration & Polish
+    - Add settings page options for suggestions
+    - Add fallback messaging when no suggestions available
+    - Add performance caching
+  - Phase 5: Testing & Documentation
+    - Add unit tests for rules, diff analysis, engine
+    - Add integration test for suggestion flow
+    - Update docs and CHANGELOG
+  - **Clarifying Questions (need answers before proceeding):**
+    - Keybinding preference: number keys (1-3) or cycle+accept (Tab/Enter)?
+    - UI placement: above commit message, right panel, or popup overlay?
+    - Scope detection: extract from directory names, filename prefixes, or both?
+    - Performance: is <100ms for 1K lines a hard requirement?
+
 - Docs: video tutorials.
 - Docs: use case examples.
 - Docs: architecture deep-dive.
