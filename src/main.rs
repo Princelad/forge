@@ -779,6 +779,7 @@ impl App {
             commit_msg: &commit_message,
             suggestions: &self.changes.suggestions,
             selected_suggestion: self.changes.selected_suggestion_index,
+            no_suggestions_message: &self.changes.no_suggestions_message,
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
             dashboard_pane_ratio: self.dashboard.pane_ratio,
@@ -1585,6 +1586,43 @@ impl App {
                     self.maybe_autosync(true);
                 }
             }
+            4 => {
+                self.settings.suggestions.enabled = !self.settings.suggestions.enabled;
+                self.status_message = format!(
+                    "⚙ Suggestions: {}",
+                    if self.settings.suggestions.enabled {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
+            5 => {
+                self.settings.suggestions.max_suggestions =
+                    (self.settings.suggestions.max_suggestions % 5) + 1;
+                self.status_message = format!(
+                    "⚙ Max suggestions: {}",
+                    self.settings.suggestions.max_suggestions
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
+            6 => {
+                self.settings.suggestions.max_length = match self.settings.suggestions.max_length {
+                    50 => 72,
+                    72 => 100,
+                    100 => 120,
+                    _ => 50,
+                };
+                self.status_message = format!(
+                    "⚙ Suggestion length: {}",
+                    self.settings.suggestions.max_length
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
             _ => {}
         }
     }
@@ -1727,17 +1765,23 @@ impl App {
     fn regenerate_commit_suggestions(&mut self) {
         if !self.settings.suggestions.enabled {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("Suggestions are disabled in Settings");
             return;
         }
 
         let Some(project) = self.store.projects.get(self.dashboard.selected_index) else {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("No active project selected");
             return;
         };
 
         let diff_summary = suggestions::DiffSummary::from_changes(&project.changes);
         if diff_summary.is_empty() {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("Stage files to see commit suggestions");
             return;
         }
 
@@ -1752,6 +1796,9 @@ impl App {
 
         if suggestions.is_empty() {
             self.changes.clear_suggestions();
+            self.changes.set_no_suggestions_message(
+                "No high-confidence suggestions for current staged changes",
+            );
         } else {
             self.changes.set_suggestions(suggestions);
         }
@@ -2334,6 +2381,22 @@ impl App {
             format!(
                 "Autosync: {}",
                 if self.settings.autosync { "On" } else { "Off" }
+            ),
+            format!(
+                "Suggestions: {}",
+                if self.settings.suggestions.enabled {
+                    "On"
+                } else {
+                    "Off"
+                }
+            ),
+            format!(
+                "Suggestion Max Count: {}",
+                self.settings.suggestions.max_suggestions
+            ),
+            format!(
+                "Suggestion Max Length: {}",
+                self.settings.suggestions.max_length
             ),
         ]
     }
