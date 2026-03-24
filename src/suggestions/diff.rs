@@ -5,8 +5,30 @@
 //! and aggregate line additions/removals parsed from `diff_preview`.
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
 
 use crate::data::{Change, FileStatus};
+use regex::Regex;
+
+const MAX_NORMALIZED_DIFF_CHARS: usize = 8_000;
+const TRUNCATION_SUFFIX: &str = "\n... [truncated]";
+
+static PRIVATE_KEY_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----")
+        .expect("private key regex")
+});
+static KEY_VALUE_SECRET_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key)\b(\s*[:=]\s*)(["']?)[^"'\s,]+(["']?)"#,
+    )
+    .expect("key/value secret regex")
+});
+static AWS_ACCESS_KEY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").expect("aws key regex"));
+static GITHUB_TOKEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b").expect("github token regex"));
+static BEARER_TOKEN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+\b").expect("bearer token regex"));
 
 /// Count of staged files by high-level change type.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -32,6 +54,8 @@ pub struct FileDiffDetail {
     pub lines_added: usize,
     /// Removed lines parsed from the patch preview.
     pub lines_removed: usize,
+    /// Normalized patch preview used by suggestion heuristics.
+    pub normalized_preview: String,
 }
 
 /// A compact summary of staged changes used as engine input.
@@ -71,6 +95,7 @@ impl DiffSummary {
         for change in staged_changes {
             let (file_added, file_removed) = parse_patch_line_counts(&change.diff_preview);
             let scope = infer_scope(&change.path);
+            let normalized_preview = normalize_diff_preview(&change.diff_preview);
 
             files_changed.push(change.path.clone());
             if let Some(scope_name) = &scope {
@@ -92,6 +117,7 @@ impl DiffSummary {
                 change_type: change.status,
                 lines_added: file_added,
                 lines_removed: file_removed,
+                normalized_preview,
             });
         }
 
@@ -176,6 +202,48 @@ fn infer_scope(path: &str) -> Option<String> {
     }
 }
 
+fn normalize_diff_preview(diff_preview: &str) -> String {
+    if is_binary_or_unavailable_preview(diff_preview) {
+        return String::new();
+    }
+
+    let mut normalized = diff_preview.to_string();
+    normalized = PRIVATE_KEY_BLOCK_RE
+        .replace_all(&normalized, "[REDACTED PRIVATE KEY]")
+        .into_owned();
+    normalized = KEY_VALUE_SECRET_RE
+        .replace_all(&normalized, "$1$2[REDACTED]")
+        .into_owned();
+    normalized = AWS_ACCESS_KEY_RE
+        .replace_all(&normalized, "[REDACTED_AWS_ACCESS_KEY]")
+        .into_owned();
+    normalized = GITHUB_TOKEN_RE
+        .replace_all(&normalized, "[REDACTED_GITHUB_TOKEN]")
+        .into_owned();
+    normalized = BEARER_TOKEN_RE
+        .replace_all(&normalized, "Bearer [REDACTED]")
+        .into_owned();
+
+    truncate_chars(&normalized, MAX_NORMALIZED_DIFF_CHARS)
+}
+
+fn is_binary_or_unavailable_preview(diff_preview: &str) -> bool {
+    diff_preview.is_empty()
+        || diff_preview == "(no diff)"
+        || diff_preview == "(diff not loaded)"
+        || diff_preview.starts_with("Binary files")
+        || diff_preview.as_bytes().contains(&0)
+}
+
+fn truncate_chars(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        return input.to_string();
+    }
+
+    let truncated: String = input.chars().take(max_chars).collect();
+    format!("{truncated}{TRUNCATION_SUFFIX}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,6 +256,17 @@ mod tests {
             local_preview: None,
             incoming_preview: None,
             staged,
+        }
+    }
+
+    fn make_staged_change(path: &str, status: FileStatus, diff_preview: &str) -> Change {
+        Change {
+            path: path.to_string(),
+            status,
+            diff_preview: diff_preview.to_string(),
+            local_preview: None,
+            incoming_preview: None,
+            staged: true,
         }
     }
 
@@ -333,5 +412,57 @@ mod tests {
         let summary = DiffSummary::from_changes(&changes);
         assert_eq!(summary.lines_added, 0);
         assert_eq!(summary.lines_removed, 0);
+        assert!(summary
+            .file_details
+            .iter()
+            .all(|f| f.normalized_preview.is_empty()));
+    }
+
+    #[test]
+    fn test_normalization_redacts_secrets() {
+        let diff = "+password=supersecret\n+token: ghp_abcdefghijklmnopqrstuvwxyz123456\n+Authorization: Bearer abc.def.ghi\n+aws_key=AKIA1234567890ABCDEF";
+        let changes = vec![make_staged_change(
+            "src/config.rs",
+            FileStatus::Modified,
+            diff,
+        )];
+
+        let summary = DiffSummary::from_changes(&changes);
+        let normalized = &summary.file_details[0].normalized_preview;
+
+        assert!(!normalized.contains("supersecret"));
+        assert!(!normalized.contains("ghp_abcdefghijklmnopqrstuvwxyz123456"));
+        assert!(!normalized.contains("abc.def.ghi"));
+        assert!(!normalized.contains("AKIA1234567890ABCDEF"));
+        assert!(normalized.contains("password=[REDACTED]"));
+        assert!(normalized.contains("Bearer [REDACTED]"));
+    }
+
+    #[test]
+    fn test_normalization_redacts_private_key_blocks() {
+        let diff = "+-----BEGIN PRIVATE KEY-----\n+abc\n+-----END PRIVATE KEY-----";
+        let changes = vec![make_staged_change("secret.pem", FileStatus::Added, diff)];
+
+        let summary = DiffSummary::from_changes(&changes);
+        let normalized = &summary.file_details[0].normalized_preview;
+        assert!(normalized.contains("[REDACTED PRIVATE KEY]"));
+        assert!(!normalized.contains("BEGIN PRIVATE KEY"));
+    }
+
+    #[test]
+    fn test_normalization_truncates_large_previews() {
+        let long_line = "a".repeat(MAX_NORMALIZED_DIFF_CHARS + 128);
+        let diff = format!("+{long_line}");
+        let changes = vec![make_staged_change(
+            "src/huge.txt",
+            FileStatus::Modified,
+            &diff,
+        )];
+
+        let summary = DiffSummary::from_changes(&changes);
+        let normalized = &summary.file_details[0].normalized_preview;
+
+        assert!(normalized.ends_with(TRUNCATION_SUFFIX));
+        assert!(normalized.chars().count() <= MAX_NORMALIZED_DIFF_CHARS + TRUNCATION_SUFFIX.len());
     }
 }
