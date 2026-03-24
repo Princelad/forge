@@ -1151,7 +1151,21 @@ impl App {
             self.changes.clear_commit_message();
         }
         if let Some(index) = update.apply_suggestion_index {
-            self.changes.apply_suggestion_at(index);
+            if self.changes.apply_suggestion_at(index) {
+                self.input_mode = InputMode::Typing;
+                self.apply_completion_message(
+                    success(&format!(
+                        "Applied suggestion {}. Edit message and press Enter to commit",
+                        index + 1
+                    )),
+                    false,
+                );
+            } else {
+                self.apply_completion_message(
+                    error(&format!("Suggestion {} is not available", index + 1)),
+                    false,
+                );
+            }
         }
         if let Some(amount) = update.project_scroll_up {
             self.dashboard.scroll_up(amount);

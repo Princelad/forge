@@ -121,6 +121,12 @@ impl HelpPage {
                 Span::raw(" to stage/unstage file"),
             ]),
             Line::from(vec![
+                Span::styled("Suggestions", Style::new().bold().magenta()),
+                Span::raw("  Press "),
+                Span::styled("1-3", Style::new().bold()),
+                Span::raw(" to apply, then type to edit"),
+            ]),
+            Line::from(vec![
                 Span::styled("Remote", Style::new().bold().magenta()),
                 Span::raw("      "),
                 Span::styled("Alt+f", Style::new().bold()),
