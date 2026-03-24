@@ -23,6 +23,8 @@ pub struct ChangesState {
     pub suggestions: Vec<CommitSuggestion>,
     /// Index of the highlighted suggestion in the suggestions list.
     pub selected_suggestion_index: usize,
+    /// Fallback text shown when no suggestions are available.
+    pub no_suggestions_message: String,
 }
 
 impl ChangesState {
@@ -36,6 +38,7 @@ impl ChangesState {
             commit_pane_ratio: 50,
             suggestions: Vec::new(),
             selected_suggestion_index: 0,
+            no_suggestions_message: "No suggestions available yet".to_string(),
         }
     }
 
@@ -191,12 +194,18 @@ impl ChangesState {
     pub fn set_suggestions(&mut self, suggestions: Vec<CommitSuggestion>) {
         self.selected_suggestion_index = 0;
         self.suggestions = suggestions;
+        self.no_suggestions_message.clear();
     }
 
     /// Clears all suggestions and resets the selection index.
     pub fn clear_suggestions(&mut self) {
         self.suggestions.clear();
         self.selected_suggestion_index = 0;
+    }
+
+    /// Sets the fallback message shown when suggestions are unavailable.
+    pub fn set_no_suggestions_message(&mut self, message: impl Into<String>) {
+        self.no_suggestions_message = message.into();
     }
 }
 
@@ -338,6 +347,7 @@ mod tests {
         let state = ChangesState::new();
         assert!(state.suggestions.is_empty());
         assert_eq!(state.selected_suggestion_index, 0);
+        assert!(!state.no_suggestions_message.is_empty());
     }
 
     #[test]
@@ -428,5 +438,12 @@ mod tests {
         state.clear_suggestions();
         assert!(state.suggestions.is_empty());
         assert_eq!(state.selected_suggestion_index, 0);
+    }
+
+    #[test]
+    fn test_set_no_suggestions_message() {
+        let mut state = ChangesState::new();
+        state.set_no_suggestions_message("No staged files");
+        assert_eq!(state.no_suggestions_message, "No staged files");
     }
 }

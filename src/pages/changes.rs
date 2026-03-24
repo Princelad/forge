@@ -20,6 +20,7 @@ pub struct ChangesParams<'a> {
     pub remote_name: Option<&'a str>,
     pub suggestions: &'a [CommitSuggestion],
     pub selected_suggestion: usize,
+    pub no_suggestions_message: &'a str,
 }
 
 #[derive(Debug)]
@@ -88,7 +89,7 @@ impl ChangesPage {
         );
 
         let suggestion_items: Vec<ListItem> = if params.suggestions.is_empty() {
-            vec![ListItem::new("No suggestions available")]
+            vec![ListItem::new(params.no_suggestions_message)]
         } else {
             params
                 .suggestions

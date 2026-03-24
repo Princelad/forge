@@ -1,3 +1,5 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -125,6 +127,7 @@ pub struct App {
     task_manager: TaskManager,
     pending_git_ops: Vec<GitOperation>,
     last_autosync_at: Option<Instant>,
+    suggestion_cache: Option<SuggestionCacheEntry>,
 
     // ====================================================================
     // Navigation & Focus State
@@ -197,6 +200,7 @@ impl App {
             task_manager: TaskManager::new(),
             pending_git_ops: Vec::new(),
             last_autosync_at: None,
+            suggestion_cache: None,
             // Page state structs
             dashboard: DashboardState::new(),
             changes: ChangesState::new(),
@@ -779,6 +783,7 @@ impl App {
             commit_msg: &commit_message,
             suggestions: &self.changes.suggestions,
             selected_suggestion: self.changes.selected_suggestion_index,
+            no_suggestions_message: &self.changes.no_suggestions_message,
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
             dashboard_pane_ratio: self.dashboard.pane_ratio,
@@ -1585,6 +1590,43 @@ impl App {
                     self.maybe_autosync(true);
                 }
             }
+            4 => {
+                self.settings.suggestions.enabled = !self.settings.suggestions.enabled;
+                self.status_message = format!(
+                    "⚙ Suggestions: {}",
+                    if self.settings.suggestions.enabled {
+                        "On"
+                    } else {
+                        "Off"
+                    }
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
+            5 => {
+                self.settings.suggestions.max_suggestions =
+                    (self.settings.suggestions.max_suggestions % 5) + 1;
+                self.status_message = format!(
+                    "⚙ Max suggestions: {}",
+                    self.settings.suggestions.max_suggestions
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
+            6 => {
+                self.settings.suggestions.max_length = match self.settings.suggestions.max_length {
+                    50 => 72,
+                    72 => 100,
+                    100 => 120,
+                    _ => 50,
+                };
+                self.status_message = format!(
+                    "⚙ Suggestion length: {}",
+                    self.settings.suggestions.max_length
+                );
+                self.regenerate_commit_suggestions();
+                self.persist_settings();
+            }
             _ => {}
         }
     }
@@ -1727,17 +1769,42 @@ impl App {
     fn regenerate_commit_suggestions(&mut self) {
         if !self.settings.suggestions.enabled {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("Suggestions are disabled in Settings");
             return;
         }
 
         let Some(project) = self.store.projects.get(self.dashboard.selected_index) else {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("No active project selected");
             return;
         };
+
+        let cache_key = self.build_suggestion_cache_key(project);
+        if let Some(cache) = &self.suggestion_cache {
+            if cache.key == cache_key {
+                if cache.suggestions.is_empty() {
+                    self.changes.clear_suggestions();
+                    self.changes
+                        .set_no_suggestions_message(cache.no_suggestions_message.clone());
+                } else {
+                    self.changes.set_suggestions(cache.suggestions.clone());
+                }
+                return;
+            }
+        }
 
         let diff_summary = suggestions::DiffSummary::from_changes(&project.changes);
         if diff_summary.is_empty() {
             self.changes.clear_suggestions();
+            self.changes
+                .set_no_suggestions_message("Stage files to see commit suggestions");
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions: Vec::new(),
+                no_suggestions_message: "Stage files to see commit suggestions".to_string(),
+            });
             return;
         }
 
@@ -1752,8 +1819,49 @@ impl App {
 
         if suggestions.is_empty() {
             self.changes.clear_suggestions();
+            self.changes.set_no_suggestions_message(
+                "No high-confidence suggestions for current staged changes",
+            );
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions: Vec::new(),
+                no_suggestions_message: "No high-confidence suggestions for current staged changes"
+                    .to_string(),
+            });
         } else {
-            self.changes.set_suggestions(suggestions);
+            self.changes.set_suggestions(suggestions.clone());
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions,
+                no_suggestions_message: String::new(),
+            });
+        }
+    }
+
+    fn build_suggestion_cache_key(&self, project: &data::Project) -> SuggestionCacheKey {
+        let mut hasher = DefaultHasher::new();
+
+        for change in &project.changes {
+            if !change.staged {
+                continue;
+            }
+
+            change.path.hash(&mut hasher);
+            change.diff_preview.hash(&mut hasher);
+            let status_marker = match change.status {
+                data::FileStatus::Modified => "M",
+                data::FileStatus::Added => "A",
+                data::FileStatus::Deleted => "D",
+            };
+            status_marker.hash(&mut hasher);
+        }
+
+        SuggestionCacheKey {
+            project_index: self.dashboard.selected_index,
+            branch_name: project.branch.clone(),
+            staged_fingerprint: hasher.finish(),
+            max_suggestions: self.settings.suggestions.max_suggestions,
+            max_length: self.settings.suggestions.max_length,
         }
     }
 
@@ -2335,6 +2443,22 @@ impl App {
                 "Autosync: {}",
                 if self.settings.autosync { "On" } else { "Off" }
             ),
+            format!(
+                "Suggestions: {}",
+                if self.settings.suggestions.enabled {
+                    "On"
+                } else {
+                    "Off"
+                }
+            ),
+            format!(
+                "Suggestion Max Count: {}",
+                self.settings.suggestions.max_suggestions
+            ),
+            format!(
+                "Suggestion Max Length: {}",
+                self.settings.suggestions.max_length
+            ),
         ]
     }
 
@@ -2462,4 +2586,20 @@ impl AppMode {
             AppMode::Settings => 8,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SuggestionCacheKey {
+    project_index: usize,
+    branch_name: String,
+    staged_fingerprint: u64,
+    max_suggestions: usize,
+    max_length: usize,
+}
+
+#[derive(Debug, Clone)]
+struct SuggestionCacheEntry {
+    key: SuggestionCacheKey,
+    suggestions: Vec<suggestions::CommitSuggestion>,
+    no_suggestions_message: String,
 }
