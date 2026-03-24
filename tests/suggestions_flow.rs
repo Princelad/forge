@@ -1,5 +1,7 @@
 use forge::data::{Change, FileStatus};
-use forge::suggestions::{CommitContext, DiffSummary, RuleBasedEngine, SuggestionConfig, SuggestionEngine};
+use forge::suggestions::{
+    CommitContext, DiffSummary, RuleBasedEngine, SuggestionConfig, SuggestionEngine,
+};
 
 fn staged_change(path: &str, status: FileStatus, diff_preview: &str) -> Change {
     Change {
