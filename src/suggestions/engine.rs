@@ -448,4 +448,33 @@ mod tests {
         let suggestions = engine.suggest(&context, &config);
         assert!(suggestions.is_empty());
     }
+
+    #[test]
+    fn test_rule_based_engine_respects_max_suggestions() {
+        let engine = RuleBasedEngine::new();
+        let config = SuggestionConfig {
+            max_suggestions: 1,
+            ..SuggestionConfig::default()
+        };
+        let context = make_context(vec!["src/main.rs", "docs/readme.md"], Some("feat/proj-7"));
+
+        let suggestions = engine.suggest(&context, &config);
+        assert_eq!(suggestions.len(), 1);
+    }
+
+    #[test]
+    fn test_rule_based_engine_outputs_unique_formatted_messages() {
+        let engine = RuleBasedEngine::new();
+        let config = SuggestionConfig {
+            max_suggestions: 5,
+            ..SuggestionConfig::default()
+        };
+        let context = make_context(vec!["src/main.rs"], Some("feat/proj-8"));
+
+        let suggestions = engine.suggest(&context, &config);
+        let mut seen = HashSet::new();
+        for suggestion in suggestions {
+            assert!(seen.insert(suggestion.formatted().to_lowercase()));
+        }
+    }
 }

@@ -219,4 +219,16 @@ mod tests {
         // docs and feat both score 1; docs wins by rule priority.
         assert_eq!(detect_commit_type(&paths), "docs");
     }
+
+    #[test]
+    fn test_classify_path_exact_match_beats_extension() {
+        // Cargo.toml matches exact-path build rule before toml extension rule.
+        assert_eq!(classify_path("Cargo.toml"), Some("build".to_string()));
+    }
+
+    #[test]
+    fn test_detect_commit_type_empty_paths_defaults_to_chore() {
+        let paths: Vec<String> = Vec::new();
+        assert_eq!(detect_commit_type(&paths), "chore");
+    }
 }
