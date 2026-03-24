@@ -24,9 +24,9 @@
     - [x] Wire suggestion generation to staged changes changes
     - [x] Allow editing after accepting suggestion
   - Phase 4: Configuration & Polish
-    - Add settings page options for suggestions
-    - Add fallback messaging when no suggestions available
-    - Add performance caching
+    - [x] Add settings page options for suggestions
+    - [x] Add fallback messaging when no suggestions available
+    - [x] Add performance caching
   - Phase 5: Testing & Documentation
     - Add unit tests for rules, diff analysis, engine
     - Add integration test for suggestion flow
