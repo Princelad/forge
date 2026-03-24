@@ -402,6 +402,7 @@ pub struct ActionContext {
     pub selected_merge_file_index: usize,
     pub selected_setting_index: usize,
     pub commit_message_empty: bool,
+    pub suggestions_count: usize,
     pub has_git_client: bool,
     pub changes_pane_ratio: u16,
     pub commit_pane_ratio: u16,
@@ -607,6 +608,40 @@ impl ActionProcessor {
             KeyAction::NavigateRight => Self::handle_navigate_right(ctx),
             KeyAction::InputChar(c) => {
                 if ctx.input_mode == InputMode::Normal {
+                    if ctx.focus == Focus::View
+                        && matches!(ctx.current_view, AppMode::Changes)
+                        && ('1'..='3').contains(&c)
+                    {
+                        let index = (c as u8 - b'1') as usize;
+                        if index < ctx.suggestions_count {
+                            return (
+                                ActionResult {
+                                    should_quit: false,
+                                    status_message: Some(format!(
+                                        "Applied suggestion {}. You can edit before committing.",
+                                        index + 1
+                                    )),
+                                },
+                                ActionStateUpdate {
+                                    apply_suggestion_index: Some(index),
+                                    input_mode: Some(InputMode::Typing),
+                                    ..Default::default()
+                                },
+                            );
+                        }
+
+                        return (
+                            ActionResult {
+                                should_quit: false,
+                                status_message: Some(format!(
+                                    "Suggestion {} is not available",
+                                    index + 1
+                                )),
+                            },
+                            ActionStateUpdate::none(),
+                        );
+                    }
+
                     match c {
                         'k' => return Self::handle_navigate_up(ctx),
                         'j' => return Self::handle_navigate_down(ctx),
@@ -2063,6 +2098,7 @@ pub struct ActionStateUpdate {
     pub commit_message_append: Option<char>,
     pub commit_message_pop: Option<()>,
     pub commit_message_clear: Option<()>,
+    pub apply_suggestion_index: Option<usize>,
     pub stash_input_append: Option<char>,
     pub stash_input_pop: Option<()>,
     pub stash_input_clear: Option<()>,
@@ -2171,6 +2207,7 @@ mod tests {
             selected_merge_file_index: 0,
             selected_setting_index: 0,
             commit_message_empty: true,
+            suggestions_count: 0,
             has_git_client: true,
             changes_pane_ratio: 50,
             commit_pane_ratio: 50,
@@ -2525,5 +2562,32 @@ mod tests {
             Some("No commits to cherry-pick".to_string())
         );
         assert!(update.cherry_pick_requested.is_none());
+    }
+
+    #[test]
+    fn suggestion_key_applies_slot_when_available() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::Changes;
+        ctx.suggestions_count = 2;
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('2'), &ctx);
+        assert!(result
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("Applied suggestion 2")));
+        assert_eq!(update.apply_suggestion_index, Some(1));
+        assert_eq!(update.input_mode, Some(InputMode::Typing));
+    }
+
+    #[test]
+    fn suggestion_key_reports_missing_slot() {
+        let mut ctx = base_ctx();
+        ctx.current_view = AppMode::Changes;
+        ctx.suggestions_count = 1;
+        let (result, update) = ActionProcessor::process(KeyAction::InputChar('3'), &ctx);
+        assert!(result
+            .status_message
+            .as_deref()
+            .is_some_and(|m| m.contains("not available")));
+        assert!(update.apply_suggestion_index.is_none());
     }
 }

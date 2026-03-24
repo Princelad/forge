@@ -18,6 +18,7 @@ use crate::pages::module_manager::ModuleManager;
 use crate::pages::project_board::ProjectBoard;
 use crate::pages::settings::SettingsPage;
 use crate::pages::stashes::StashesPage;
+use crate::suggestions::CommitSuggestion;
 use crate::{AppMode, AppSettings, Focus, Theme};
 
 /// Context for rendering the UI
@@ -32,6 +33,9 @@ pub struct RenderContext<'a> {
     pub selected_project: usize,
     pub selected_change: usize,
     pub commit_msg: &'a str,
+    pub suggestions: &'a [CommitSuggestion],
+    pub selected_suggestion: usize,
+    pub no_suggestions_message: &'a str,
     pub changes_pane_ratio: u16,
     pub commit_pane_ratio: u16,
     pub dashboard_pane_ratio: u16,
@@ -201,6 +205,9 @@ impl Screen {
                         project: p,
                         selected: ctx.selected_change,
                         commit_msg: ctx.commit_msg,
+                        suggestions: ctx.suggestions,
+                        selected_suggestion: ctx.selected_suggestion,
+                        no_suggestions_message: ctx.no_suggestions_message,
                         scroll: ctx.changes_scroll,
                         pane_ratio: ctx.changes_pane_ratio,
                         remote_name: ctx.selected_remote.as_deref(),

@@ -2,7 +2,11 @@
 pub mod async_task;
 pub mod data;
 pub mod git;
+pub mod suggestions;
 
 // Re-export main types used in tests
 pub use data::{Change, Developer, FileStatus, Module, ModuleStatus, Project, Store};
 pub use git::{GitClient, RepoHealthReport, RepoHealthStatus, RepoIssue, TransferProgress};
+pub use suggestions::{
+    CommitSuggestion, DiffSummary, RuleBasedEngine, SuggestionConfig, SuggestionEngine,
+};

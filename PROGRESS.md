@@ -3,27 +3,34 @@
 - Pending:
 
 - AI/ML foundations: commit message suggestions MVP.
-	- Define MVP goals, non-goals, and acceptance criteria.
-	- Inventory current commit flow and integration points.
-	- Identify data sources for suggestions (staged diff, status, previous messages).
-	- Decide on on-device heuristic vs. local ML baseline for MVP.
-	- Draft prompt/template format for suggestions output.
-	- Create suggestion generation API surface (trait or function) in codebase.
-	- Implement diff summarization (files, hunks, scopes).
-	- Normalize diff text (strip binaries, limit size, redact secrets).
-	- Add commit context builder (branch name, issue keys, scope).
-	- Implement baseline suggestion engine (rule-based).
-	- Add ranking/deduping logic for multiple suggestions.
-	- Add configurable max suggestions and length limits.
-	- Wire into UI: new panel/section for suggestions.
-	- Add keybinding to accept and edit a suggestion.
-	- Add fallback messaging when no suggestions available.
-	- Add settings for enable/disable and behavior.
-	- Add telemetry/logging hooks for debug (local only).
-	- Add unit tests for diff summarization and suggestion rules.
-	- Add integration test for suggestion flow in commit screen.
-	- Update docs with usage and limitations.
-	- Add entry in CHANGELOG for MVP feature.
+  - [x] Inventory current commit flow and integration points.
+  - [x] Identify data sources for suggestions (staged diff, status, branch name).
+  - [x] Decide on rule-based heuristic engine (no ML for MVP).
+  - Phase 1: Core Infrastructure
+    - [x] Create `src/suggestions/` module (mod.rs, engine.rs, rules.rs, diff.rs, context.rs)
+    - [x] Define `CommitSuggestion` struct (type, scope, message, confidence)
+    - [x] Define `SuggestionEngine` trait for testability
+    - [x] Extend `AppSettings` with suggestion config (enabled, max_suggestions, max_length)
+    - [x] Extend `ChangesState` with suggestions list and selected index
+  - Phase 2: Suggestion Engine Implementation
+    - [x] Implement diff analysis: extract files, scopes, change types
+    - [x] Implement text normalization: strip binaries, limit size, redact secrets
+    - [x] Implement branch context: extract issue keys from branch names
+    - [x] Implement rule-based type detection (file extension → commit type)
+    - [x] Implement suggestion generation with ranking/deduplication
+  - Phase 3: UI Integration
+    - [x] Update `ChangesPage` to render suggestions panel
+    - [x] Add suggestion keybindings (1-3 to accept, or Tab+Enter pattern)
+    - [x] Wire suggestion generation to staged changes changes
+    - [x] Allow editing after accepting suggestion
+  - Phase 4: Configuration & Polish
+    - [x] Add settings page options for suggestions
+    - [x] Add fallback messaging when no suggestions available
+    - [x] Add performance caching
+  - Phase 5: Testing & Documentation
+    - [x] Add unit tests for rules, diff analysis, engine
+    - [x] Add integration test for suggestion flow
+    - [x] Update docs and CHANGELOG
 - Docs: video tutorials.
 - Docs: use case examples.
 - Docs: architecture deep-dive.
