@@ -28,15 +28,9 @@
     - [x] Add fallback messaging when no suggestions available
     - [x] Add performance caching
   - Phase 5: Testing & Documentation
-    - Add unit tests for rules, diff analysis, engine
-    - Add integration test for suggestion flow
-    - Update docs and CHANGELOG
-  - **Clarifying Questions (need answers before proceeding):**
-    - Keybinding preference: number keys (1-3) or cycle+accept (Tab/Enter)?
-    - UI placement: above commit message, right panel, or popup overlay?
-    - Scope detection: extract from directory names, filename prefixes, or both?
-    - Performance: is <100ms for 1K lines a hard requirement?
-
+    - [x] Add unit tests for rules, diff analysis, engine
+    - [x] Add integration test for suggestion flow
+    - [x] Update docs and CHANGELOG
 - Docs: video tutorials.
 - Docs: use case examples.
 - Docs: architecture deep-dive.
