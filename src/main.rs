@@ -1,3 +1,5 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -125,6 +127,7 @@ pub struct App {
     task_manager: TaskManager,
     pending_git_ops: Vec<GitOperation>,
     last_autosync_at: Option<Instant>,
+    suggestion_cache: Option<SuggestionCacheEntry>,
 
     // ====================================================================
     // Navigation & Focus State
@@ -197,6 +200,7 @@ impl App {
             task_manager: TaskManager::new(),
             pending_git_ops: Vec::new(),
             last_autosync_at: None,
+            suggestion_cache: None,
             // Page state structs
             dashboard: DashboardState::new(),
             changes: ChangesState::new(),
@@ -1777,11 +1781,30 @@ impl App {
             return;
         };
 
+        let cache_key = self.build_suggestion_cache_key(project);
+        if let Some(cache) = &self.suggestion_cache {
+            if cache.key == cache_key {
+                if cache.suggestions.is_empty() {
+                    self.changes.clear_suggestions();
+                    self.changes
+                        .set_no_suggestions_message(cache.no_suggestions_message.clone());
+                } else {
+                    self.changes.set_suggestions(cache.suggestions.clone());
+                }
+                return;
+            }
+        }
+
         let diff_summary = suggestions::DiffSummary::from_changes(&project.changes);
         if diff_summary.is_empty() {
             self.changes.clear_suggestions();
             self.changes
                 .set_no_suggestions_message("Stage files to see commit suggestions");
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions: Vec::new(),
+                no_suggestions_message: "Stage files to see commit suggestions".to_string(),
+            });
             return;
         }
 
@@ -1799,8 +1822,46 @@ impl App {
             self.changes.set_no_suggestions_message(
                 "No high-confidence suggestions for current staged changes",
             );
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions: Vec::new(),
+                no_suggestions_message: "No high-confidence suggestions for current staged changes"
+                    .to_string(),
+            });
         } else {
-            self.changes.set_suggestions(suggestions);
+            self.changes.set_suggestions(suggestions.clone());
+            self.suggestion_cache = Some(SuggestionCacheEntry {
+                key: cache_key,
+                suggestions,
+                no_suggestions_message: String::new(),
+            });
+        }
+    }
+
+    fn build_suggestion_cache_key(&self, project: &data::Project) -> SuggestionCacheKey {
+        let mut hasher = DefaultHasher::new();
+
+        for change in &project.changes {
+            if !change.staged {
+                continue;
+            }
+
+            change.path.hash(&mut hasher);
+            change.diff_preview.hash(&mut hasher);
+            let status_marker = match change.status {
+                data::FileStatus::Modified => "M",
+                data::FileStatus::Added => "A",
+                data::FileStatus::Deleted => "D",
+            };
+            status_marker.hash(&mut hasher);
+        }
+
+        SuggestionCacheKey {
+            project_index: self.dashboard.selected_index,
+            branch_name: project.branch.clone(),
+            staged_fingerprint: hasher.finish(),
+            max_suggestions: self.settings.suggestions.max_suggestions,
+            max_length: self.settings.suggestions.max_length,
         }
     }
 
@@ -2525,4 +2586,20 @@ impl AppMode {
             AppMode::Settings => 8,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SuggestionCacheKey {
+    project_index: usize,
+    branch_name: String,
+    staged_fingerprint: u64,
+    max_suggestions: usize,
+    max_length: usize,
+}
+
+#[derive(Debug, Clone)]
+struct SuggestionCacheEntry {
+    key: SuggestionCacheKey,
+    suggestions: Vec<suggestions::CommitSuggestion>,
+    no_suggestions_message: String,
 }
