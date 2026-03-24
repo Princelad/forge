@@ -16,7 +16,7 @@
     - [x] Implement diff analysis: extract files, scopes, change types
     - [x] Implement text normalization: strip binaries, limit size, redact secrets
     - [x] Implement branch context: extract issue keys from branch names
-    - Implement rule-based type detection (file extension → commit type)
+    - [x] Implement rule-based type detection (file extension → commit type)
     - Implement suggestion generation with ranking/deduplication
   - Phase 3: UI Integration
     - Update `ChangesPage` to render suggestions panel
