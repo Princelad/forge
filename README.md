@@ -23,6 +23,7 @@ cargo build --release
 - 📋 **Project Board** — Kanban task tracking (Pending → Current → Completed)
 - 🔗 **Branch Management** — Create, switch, and delete branches
 - 📝 **Commit History** — Browse and inspect commits
+- 💡 **Commit Suggestions** — Ranked conventional-commit suggestions with quick apply (`1-3`)
 - 👥 **Team Management** — Track modules and developers
 - 🔀 **Merge Visualization** — Side-by-side local/incoming previews with accept markers
 - ⚙️ **Customizable** — Theme switching, notifications, autosync, and keybindings
@@ -69,11 +70,12 @@ cd /path/to/your/repo
 1. **Navigate** with Tab and Arrow keys
 2. **Stage files** with Space
 3. **Commit** with Enter
-4. **View help** with `?`
-5. **Fetch** with `f` (Dashboard or Changes view)
-6. **Push** with `p` (Changes view)
-7. **Pull** with Ctrl+L (Changes view)
-8. **Quit** with Ctrl+C
+4. **Apply suggestion** with `1`, `2`, or `3` in Changes view (then edit if needed)
+5. **View help** with `?`
+6. **Fetch** with `f` (Dashboard or Changes view)
+7. **Push** with `p` (Changes view)
+8. **Pull** with Ctrl+L (Changes view)
+9. **Quit** with Ctrl+C
 
 See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 

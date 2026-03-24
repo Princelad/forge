@@ -465,4 +465,31 @@ mod tests {
         assert!(normalized.ends_with(TRUNCATION_SUFFIX));
         assert!(normalized.chars().count() <= MAX_NORMALIZED_DIFF_CHARS + TRUNCATION_SUFFIX.len());
     }
+
+    #[test]
+    fn test_normalization_keeps_safe_patch_content() {
+        let diff = "+pub fn add(a: i32, b: i32) -> i32 { a + b }\n-// old comment";
+        let changes = vec![make_staged_change(
+            "src/math.rs",
+            FileStatus::Modified,
+            diff,
+        )];
+
+        let summary = DiffSummary::from_changes(&changes);
+        let normalized = &summary.file_details[0].normalized_preview;
+        assert!(normalized.contains("pub fn add"));
+        assert!(normalized.contains("old comment"));
+    }
+
+    #[test]
+    fn test_scopes_are_deduplicated_in_summary() {
+        let changes = vec![
+            make_staged_change("src/a.rs", FileStatus::Modified, "+a"),
+            make_staged_change("src/b.rs", FileStatus::Modified, "+b"),
+            make_staged_change("docs/readme.md", FileStatus::Modified, "+doc"),
+        ];
+
+        let summary = DiffSummary::from_changes(&changes);
+        assert_eq!(summary.scopes, vec!["docs".to_string(), "src".to_string()]);
+    }
 }

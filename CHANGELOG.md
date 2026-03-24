@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.2 — 2026-03-24
+
+### Added
+
+- Commit message suggestions MVP across the Changes view:
+	- Rule-based type detection from file paths/extensions.
+	- Branch issue-key extraction for contextual subjects.
+	- Suggestion ranking and deduplication.
+	- Suggestions panel with numeric quick-apply (`1-3`).
+	- Editable apply flow before commit submission.
+	- Settings controls for suggestion enablement, count, and max length.
+	- Fallback suggestion messages when no candidates are available.
+	- Cached regeneration for repeated staged states.
+
+### Testing
+
+- Expanded unit coverage for suggestion diff normalization, rule precedence, and engine limits.
+- Added integration coverage for end-to-end suggestion generation flow.
+
 ## v0.3.1 — 2026-02-13
 
 ### Added
