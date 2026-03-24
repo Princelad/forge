@@ -14,7 +14,7 @@
     - [x] Extend `ChangesState` with suggestions list and selected index
   - Phase 2: Suggestion Engine Implementation
     - [x] Implement diff analysis: extract files, scopes, change types
-    - Implement text normalization: strip binaries, limit size, redact secrets
+    - [x] Implement text normalization: strip binaries, limit size, redact secrets
     - Implement branch context: extract issue keys from branch names
     - Implement rule-based type detection (file extension → commit type)
     - Implement suggestion generation with ranking/deduplication
