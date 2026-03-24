@@ -935,6 +935,7 @@ impl App {
             selected_merge_file_index: self.merge.selected_file_index,
             selected_setting_index: self.selected_setting_index,
             commit_message_empty: self.changes.is_commit_message_empty(),
+            suggestions_count: self.changes.suggestion_count(),
             has_git_client: self.git_client.is_some(),
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
@@ -1146,6 +1147,9 @@ impl App {
         }
         if update.commit_message_clear.is_some() {
             self.changes.clear_commit_message();
+        }
+        if let Some(index) = update.apply_suggestion_index {
+            self.changes.apply_suggestion_at(index);
         }
         if let Some(amount) = update.project_scroll_up {
             self.dashboard.scroll_up(amount);
