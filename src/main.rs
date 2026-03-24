@@ -775,6 +775,8 @@ impl App {
             selected_project: self.dashboard.selected_index,
             selected_change: self.changes.selected_index,
             commit_msg: &commit_message,
+            suggestions: &self.changes.suggestions,
+            selected_suggestion: self.changes.selected_suggestion_index,
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
             dashboard_pane_ratio: self.dashboard.pane_ratio,

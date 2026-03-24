@@ -1,7 +1,9 @@
 use crate::data::{Change, Project};
+use crate::suggestions::CommitSuggestion;
 use crate::ui_utils::create_list_state;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
+    style::Style,
     widgets::{Block, List, ListItem, Paragraph},
     Frame,
 };
@@ -16,6 +18,8 @@ pub struct ChangesParams<'a> {
     pub scroll: usize,
     pub pane_ratio: u16,
     pub remote_name: Option<&'a str>,
+    pub suggestions: &'a [CommitSuggestion],
+    pub selected_suggestion: usize,
 }
 
 #[derive(Debug)]
@@ -66,7 +70,12 @@ impl ChangesPage {
             &mut state,
         );
 
-        // Right: diff preview for selected
+        // Right: diff preview + suggestion list
+        let right_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(9)])
+            .split(cols[1]);
+
         let preview = params
             .project
             .changes
@@ -75,13 +84,43 @@ impl ChangesPage {
             .unwrap_or_else(|| "Select a file".into());
         frame.render_widget(
             Paragraph::new(preview).block(Block::bordered().title("Diff Preview")),
-            cols[1],
+            right_layout[0],
+        );
+
+        let suggestion_items: Vec<ListItem> = if params.suggestions.is_empty() {
+            vec![ListItem::new("No suggestions available")]
+        } else {
+            params
+                .suggestions
+                .iter()
+                .enumerate()
+                .map(|(idx, suggestion)| {
+                    let slot = idx + 1;
+                    ListItem::new(format!(
+                        "{}. {} ({:.0}%)",
+                        slot,
+                        suggestion.formatted(),
+                        suggestion.confidence * 100.0
+                    ))
+                })
+                .collect()
+        };
+
+        let mut suggestion_state =
+            create_list_state(params.selected_suggestion, 0, suggestion_items.len());
+        frame.render_stateful_widget(
+            List::new(suggestion_items)
+                .block(Block::bordered().title("Suggestions (press 1-3 to apply)"))
+                .highlight_style(Style::new().reversed())
+                .highlight_symbol(">> "),
+            right_layout[1],
+            &mut suggestion_state,
         );
 
         // Bottom: commit message input
         frame.render_widget(
             Paragraph::new(format!("Commit message: {}", params.commit_msg))
-                .block(Block::bordered().title("Type and press Enter to commit")),
+                .block(Block::bordered().title("Enter to type/commit, 1-3 to apply suggestion")),
             layout[1],
         );
     }
