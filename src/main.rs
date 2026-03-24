@@ -29,6 +29,7 @@ use state::{
     ModuleManagerState, StashesState,
 };
 use status_symbols::{error, progress, success};
+use suggestions::SuggestionEngine;
 
 // UI constants
 const DEFAULT_WINDOW_SIZE: usize = 10;
@@ -265,6 +266,7 @@ impl App {
                 app.git_health = Some(health);
                 app.refresh_remotes();
                 app.ensure_change_preview_loaded(app.changes.selected_index);
+                app.regenerate_commit_suggestions();
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
                     let _ = app.store.load_progress(wd);
@@ -775,6 +777,8 @@ impl App {
             selected_project: self.dashboard.selected_index,
             selected_change: self.changes.selected_index,
             commit_msg: &commit_message,
+            suggestions: &self.changes.suggestions,
+            selected_suggestion: self.changes.selected_suggestion_index,
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
             dashboard_pane_ratio: self.dashboard.pane_ratio,
@@ -933,6 +937,7 @@ impl App {
             selected_merge_file_index: self.merge.selected_file_index,
             selected_setting_index: self.selected_setting_index,
             commit_message_empty: self.changes.is_commit_message_empty(),
+            suggestions_count: self.changes.suggestion_count(),
             has_git_client: self.git_client.is_some(),
             changes_pane_ratio: self.changes.changes_pane_ratio,
             commit_pane_ratio: self.changes.commit_pane_ratio,
@@ -1144,6 +1149,23 @@ impl App {
         }
         if update.commit_message_clear.is_some() {
             self.changes.clear_commit_message();
+        }
+        if let Some(index) = update.apply_suggestion_index {
+            if self.changes.apply_suggestion_at(index) {
+                self.input_mode = InputMode::Typing;
+                self.apply_completion_message(
+                    success(&format!(
+                        "Applied suggestion {}. Edit message and press Enter to commit",
+                        index + 1
+                    )),
+                    false,
+                );
+            } else {
+                self.apply_completion_message(
+                    error(&format!("Suggestion {} is not available", index + 1)),
+                    false,
+                );
+            }
         }
         if let Some(amount) = update.project_scroll_up {
             self.dashboard.scroll_up(amount);
@@ -1595,6 +1617,7 @@ impl App {
                         {
                             project.changes = changes;
                             self.ensure_change_preview_loaded(self.changes.selected_index);
+                            self.regenerate_commit_suggestions();
                         }
                     }
                     self.store
@@ -1696,7 +1719,42 @@ impl App {
             }
         }
 
+        self.regenerate_commit_suggestions();
+
         Ok(())
+    }
+
+    fn regenerate_commit_suggestions(&mut self) {
+        if !self.settings.suggestions.enabled {
+            self.changes.clear_suggestions();
+            return;
+        }
+
+        let Some(project) = self.store.projects.get(self.dashboard.selected_index) else {
+            self.changes.clear_suggestions();
+            return;
+        };
+
+        let diff_summary = suggestions::DiffSummary::from_changes(&project.changes);
+        if diff_summary.is_empty() {
+            self.changes.clear_suggestions();
+            return;
+        }
+
+        let branch_name = if project.branch.trim().is_empty() {
+            None
+        } else {
+            Some(project.branch.clone())
+        };
+        let context = suggestions::CommitContext::new(diff_summary, branch_name);
+        let engine = suggestions::RuleBasedEngine::new();
+        let suggestions = engine.suggest(&context, &self.settings.suggestions);
+
+        if suggestions.is_empty() {
+            self.changes.clear_suggestions();
+        } else {
+            self.changes.set_suggestions(suggestions);
+        }
     }
 
     fn load_branch_infos(&self) -> color_eyre::Result<Vec<BranchInfo>> {
@@ -2161,6 +2219,7 @@ impl App {
                                 Ok(changes) => {
                                     project.changes = changes;
                                     self.ensure_change_preview_loaded(self.changes.selected_index);
+                                    self.regenerate_commit_suggestions();
                                     self.status_message = if is_staged {
                                         success(&format!("Unstaged: {}", path))
                                     } else {

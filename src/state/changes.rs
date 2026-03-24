@@ -176,6 +176,17 @@ impl ChangesState {
         }
     }
 
+    /// Applies the suggestion at the given index as the commit message.
+    ///
+    /// Returns `true` if the index exists and the suggestion was applied.
+    pub fn apply_suggestion_at(&mut self, index: usize) -> bool {
+        if index >= self.suggestions.len() {
+            return false;
+        }
+        self.selected_suggestion_index = index;
+        self.apply_selected_suggestion()
+    }
+
     /// Replaces the current suggestion list and resets the selection index.
     pub fn set_suggestions(&mut self, suggestions: Vec<CommitSuggestion>) {
         self.selected_suggestion_index = 0;
@@ -389,6 +400,25 @@ mod tests {
         let mut state = ChangesState::new();
         assert!(!state.apply_selected_suggestion());
         assert!(state.commit_message.is_empty());
+    }
+
+    #[test]
+    fn test_apply_suggestion_at_sets_selection_and_message() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![
+            make_suggestion("feat", "first"),
+            make_suggestion("fix", "second"),
+        ]);
+        assert!(state.apply_suggestion_at(1));
+        assert_eq!(state.selected_suggestion_index, 1);
+        assert_eq!(state.commit_message, "fix: second");
+    }
+
+    #[test]
+    fn test_apply_suggestion_at_out_of_bounds_returns_false() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![make_suggestion("feat", "first")]);
+        assert!(!state.apply_suggestion_at(2));
     }
 
     #[test]

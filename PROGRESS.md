@@ -19,10 +19,10 @@
     - [x] Implement rule-based type detection (file extension → commit type)
     - [x] Implement suggestion generation with ranking/deduplication
   - Phase 3: UI Integration
-    - Update `ChangesPage` to render suggestions panel
-    - Add suggestion keybindings (1-3 to accept, or Tab+Enter pattern)
-    - Wire suggestion generation to staged changes changes
-    - Allow editing after accepting suggestion
+    - [x] Update `ChangesPage` to render suggestions panel
+    - [x] Add suggestion keybindings (1-3 to accept, or Tab+Enter pattern)
+    - [x] Wire suggestion generation to staged changes changes
+    - [x] Allow editing after accepting suggestion
   - Phase 4: Configuration & Polish
     - Add settings page options for suggestions
     - Add fallback messaging when no suggestions available
