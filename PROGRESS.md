@@ -15,7 +15,7 @@
   - Phase 2: Suggestion Engine Implementation
     - [x] Implement diff analysis: extract files, scopes, change types
     - [x] Implement text normalization: strip binaries, limit size, redact secrets
-    - Implement branch context: extract issue keys from branch names
+    - [x] Implement branch context: extract issue keys from branch names
     - Implement rule-based type detection (file extension → commit type)
     - Implement suggestion generation with ranking/deduplication
   - Phase 3: UI Integration
