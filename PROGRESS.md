@@ -2,42 +2,49 @@
 
 - Pending:
 
-- AI/ML foundations: commit message suggestions MVP.
-  - [x] Inventory current commit flow and integration points.
-  - [x] Identify data sources for suggestions (staged diff, status, branch name).
-  - [x] Decide on rule-based heuristic engine (no ML for MVP).
-  - Phase 1: Core Infrastructure
-    - [x] Create `src/suggestions/` module (mod.rs, engine.rs, rules.rs, diff.rs, context.rs)
-    - [x] Define `CommitSuggestion` struct (type, scope, message, confidence)
-    - [x] Define `SuggestionEngine` trait for testability
-    - [x] Extend `AppSettings` with suggestion config (enabled, max_suggestions, max_length)
-    - [x] Extend `ChangesState` with suggestions list and selected index
-  - Phase 2: Suggestion Engine Implementation
-    - [x] Implement diff analysis: extract files, scopes, change types
-    - [x] Implement text normalization: strip binaries, limit size, redact secrets
-    - [x] Implement branch context: extract issue keys from branch names
-    - [x] Implement rule-based type detection (file extension → commit type)
-    - [x] Implement suggestion generation with ranking/deduplication
-  - Phase 3: UI Integration
-    - [x] Update `ChangesPage` to render suggestions panel
-    - [x] Add suggestion keybindings (1-3 to accept, or Tab+Enter pattern)
-    - [x] Wire suggestion generation to staged changes changes
-    - [x] Allow editing after accepting suggestion
-  - Phase 4: Configuration & Polish
-    - [x] Add settings page options for suggestions
-    - [x] Add fallback messaging when no suggestions available
-    - [x] Add performance caching
-  - Phase 5: Testing & Documentation
-    - [x] Add unit tests for rules, diff analysis, engine
-    - [x] Add integration test for suggestion flow
-    - [x] Update docs and CHANGELOG
-- Docs: video tutorials.
-- Docs: use case examples.
-- Docs: architecture deep-dive.
+- Stage: Pre-Usable Release (stabilization + onboarding)
+  - 1) Reliability and correctness (must pass before release)
+    - [x] Add CI pipeline for `cargo fmt --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo test`.
+    - [x] Expand integration coverage for branch flows (create/switch/delete/track remote branches).
+    - [ ] Add integration tests for stash/cherry-pick conflict recovery paths.
+    - [ ] Add regression tests for commit suggestion acceptance and manual edit flow.
+    - [ ] Audit and remove panic-prone `unwrap()`/`expect()` usage in runtime UI paths.
+  - 2) UX hardening for daily use
+    - [ ] Add clear empty/loading/error states across all pages (dashboard, changes, branches, stash, merge).
+    - [ ] Standardize success/error notifications in status bar with actionable recovery hints.
+    - [ ] Add destructive action confirmations (drop stash, delete branch, hard reset-like actions if exposed).
+    - [ ] Improve keyboard discoverability with contextual key hints per page.
+  - 3) Configuration and persistence
+    - [ ] Finalize default keymap profile and document overrides.
+    - [ ] Validate settings/keybindings schema on startup with user-friendly diagnostics.
+    - [ ] Add migration handling for future `.forge/` data format changes.
+  - 4) Packaging and install readiness
+    - [ ] Add release build profile checks and size/perf sanity benchmark pass.
+    - [ ] Provide install paths for Linux/macOS (binary download + cargo install instructions).
+    - [ ] Add shell completion generation/install instructions if supported.
+  - 5) Documentation required for first-time usability
+    - [ ] Publish a 5-minute quickstart workflow in `README.md` (init, stage, commit, branch, sync).
+    - [ ] Add troubleshooting decision tree for common failures (auth, merge conflicts, detached HEAD, lock files).
+    - [ ] Document commit suggestion behavior, limits, and config knobs in wiki + README.
+    - [ ] Create short terminal GIF/video walkthroughs for core workflows.
+  - 6) Release gate (definition of "maybe usable")
+    - [ ] Run dogfood pass on at least 3 real repos for one week and log friction items.
+    - [ ] Close all P0/P1 bugs found in dogfood pass.
+    - [ ] Tag `v0.1.0-beta` once reliability + docs + onboarding checklist is complete.
+  - 7) Additional tasks from README/wiki audit
+    - [ ] Implement rebase workflows (start/continue/abort) with conflict routing into Merge view.
+    - [ ] Add tag management (list/create/delete lightweight + annotated tags).
+    - [ ] Expand async task coverage beyond remote ops to prevent UI blocking on long Git operations.
+    - [ ] Add bulk file operations in Changes view (stage all / unstage all shortcuts).
+    - [ ] Add E2E UI workflow tests (tab navigation, staging/commit, merge resolution, remote ops).
+    - [ ] Add optional theme customization support (beyond built-in themes) or document deferral explicitly.
+    - [ ] Complete docs improvements tracked in roadmap: video tutorials, use case examples, architecture deep-dive.
+    - [ ] Run docs consistency pass to remove stale statements (implemented vs not implemented/limitations mismatch).
 
 
 - Completed:
 
+- AI/ML foundations: commit message suggestions MVP.
 - Testing: expand integration tests and add UI workflow coverage.
 - Repo health UX: surface recovery actions inline for common Git failures.
 - Remote branches: tracking + switch/manage remote-only branches.
