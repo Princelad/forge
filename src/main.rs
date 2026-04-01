@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::env;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -82,11 +83,89 @@ pub enum InputMode {
 }
 
 fn main() -> color_eyre::Result<()> {
+    if handle_cli_preflight()? {
+        return Ok(());
+    }
+
     color_eyre::install()?;
     let terminal = ratatui::init();
     let result = App::new().run(terminal);
     ratatui::restore();
     result
+}
+
+fn handle_cli_preflight() -> color_eyre::Result<bool> {
+    let mut args = env::args().skip(1);
+    let Some(first) = args.next() else {
+        return Ok(false);
+    };
+
+    match first.as_str() {
+        "-h" | "--help" => {
+            print_help();
+            Ok(true)
+        }
+        "-V" | "--version" => {
+            println!("forge {}", env!("CARGO_PKG_VERSION"));
+            Ok(true)
+        }
+        "--print-completion" => {
+            let Some(shell) = args.next() else {
+                return Err(color_eyre::eyre::eyre!(
+                    "Missing shell name. Usage: forge --print-completion <bash|zsh|fish>"
+                ));
+            };
+
+            let script = completion_script(&shell).ok_or_else(|| {
+                color_eyre::eyre::eyre!(
+                    "Unsupported shell '{}'. Expected one of: bash, zsh, fish",
+                    shell
+                )
+            })?;
+            println!("{}", script);
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+fn print_help() {
+    println!(
+        "forge {version}\n\nUSAGE:\n    forge\n    forge --help\n    forge --version\n    forge --print-completion <bash|zsh|fish>\n\nOPTIONS:\n    -h, --help                Show this help\n    -V, --version             Show forge version\n    --print-completion SHELL  Print shell completion script\n",
+        version = env!("CARGO_PKG_VERSION")
+    );
+}
+
+fn completion_script(shell: &str) -> Option<&'static str> {
+    match shell {
+        "bash" => Some(
+            r#"_forge_completions() {
+    local cur
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    COMPREPLY=( $(compgen -W "--help --version --print-completion" -- "$cur") )
+}
+complete -F _forge_completions forge
+"#,
+        ),
+        "zsh" => Some(
+            r#"#compdef forge
+_forge() {
+  _arguments \
+    '--help[Show help]' \
+    '--version[Show version]' \
+    '--print-completion[Print completion script]:shell:(bash zsh fish)'
+}
+_forge "$@"
+"#,
+        ),
+        "fish" => Some(
+            r#"complete -c forge -l help -d 'Show help'
+complete -c forge -l version -d 'Show version'
+complete -c forge -l print-completion -d 'Print completion script' -a 'bash zsh fish'
+"#,
+        ),
+        _ => None,
+    }
 }
 
 /// Main application state container
