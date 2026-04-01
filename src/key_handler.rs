@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::Path;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -54,6 +55,7 @@ impl KeyChord {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct KeybindingsConfig {
     bindings: HashMap<String, BindingValue>,
 }
@@ -98,9 +100,18 @@ impl KeyHandler {
             return Ok(());
         }
 
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(&path)?;
         let config: KeybindingsConfig = toml::from_str(&contents)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+            .map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid keybindings schema in {}: {}\nHint: use [bindings] table with action = \"Key\" entries",
+                        path.display(),
+                        err
+                    ),
+                )
+            })?;
         apply_keybindings(&mut self.keymap, config)?;
         Ok(())
     }
@@ -133,6 +144,45 @@ impl KeyHandler {
             _ => KeyAction::None,
         }
     }
+}
+
+pub fn default_keybindings_profile() -> &'static str {
+    r#"# Forge default keymap profile
+#
+# Copy entries into .forge/keybindings.toml to override defaults.
+# Action names are case-insensitive and may use '-' or '_'.
+
+[bindings]
+back = "Esc"
+quit = ["q", "Ctrl+c"]
+help = "?"
+search = "Ctrl+f"
+pull = "Ctrl+l"
+fetch = "Alt+f"
+push = "Alt+p"
+next_view = "Tab"
+navigate_up = "Up"
+navigate_down = "Down"
+navigate_left = "Left"
+navigate_right = "Right"
+pane_narrow = "Alt+Left"
+pane_widen = "Alt+Right"
+scroll_page_up = "PageUp"
+scroll_page_down = "PageDown"
+select = "Enter"
+backspace = "Backspace"
+toggle_staging = "Space"
+"#
+}
+
+pub fn ensure_default_keybindings_profile(workdir: &Path) -> std::io::Result<()> {
+    let dir = workdir.join(".forge");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("keybindings.default.toml");
+    if !path.exists() {
+        fs::write(path, default_keybindings_profile())?;
+    }
+    Ok(())
 }
 
 fn default_keymap() -> HashMap<KeyChord, KeyAction> {
@@ -2190,6 +2240,7 @@ impl ActionStateUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     fn base_ctx() -> ActionContext {
         ActionContext {
@@ -2494,6 +2545,29 @@ mod tests {
             resolved,
             Some(KeyAction::Quit) | Some(KeyAction::Back)
         ));
+    }
+
+    #[test]
+    fn default_keybindings_profile_contains_bindings_table() {
+        let profile = default_keybindings_profile();
+        assert!(profile.contains("[bindings]"));
+        assert!(profile.contains("next_view"));
+        assert!(profile.contains("toggle_staging"));
+    }
+
+    #[test]
+    fn ensure_default_keybindings_profile_creates_file() {
+        let temp = std::env::temp_dir().join(format!("forge-keymap-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp).expect("create temp");
+
+        ensure_default_keybindings_profile(&temp).expect("write default profile");
+        let path = temp.join(".forge").join("keybindings.default.toml");
+        assert!(path.exists());
+
+        let contents = fs::read_to_string(path).expect("read default profile");
+        assert!(contents.contains("[bindings]"));
+
+        let _ = fs::remove_dir_all(temp);
     }
 
     #[test]

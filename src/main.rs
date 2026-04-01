@@ -281,13 +281,43 @@ impl App {
                 app.regenerate_commit_suggestions();
                 // Load persisted data if available
                 if let Some(wd) = app.git_workdir.as_ref() {
+                    let mut startup_diagnostics = Vec::new();
+
                     let _ = app.store.load_progress(wd);
-                    let _ = app.store.load_from_json(wd);
-                    if let Ok(Some(settings)) = app.load_settings_from(wd) {
-                        app.settings = settings;
+                    match data::Store::migrate_forge_schema(wd) {
+                        Ok(Some(msg)) => startup_diagnostics.push(msg),
+                        Ok(None) => {}
+                        Err(err) => startup_diagnostics
+                            .push(format!(".forge migration diagnostic: {}", err)),
                     }
+                    if let Err(err) = app.store.load_from_json(wd) {
+                        startup_diagnostics.push(format!(".forge load diagnostic: {}", err));
+                    }
+                    match app.load_settings_from(wd) {
+                        Ok(Some(settings)) => {
+                            app.settings = settings;
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            startup_diagnostics
+                                .push(format!("settings schema diagnostic: {}", err));
+                        }
+                    }
+
+                    if let Err(err) = key_handler::ensure_default_keybindings_profile(wd) {
+                        startup_diagnostics
+                            .push(format!("default keymap profile diagnostic: {}", err));
+                    }
+
                     if let Err(err) = app.key_handler.load_keybindings_from(wd) {
-                        let msg = error(&format!("Failed to load keybindings: {}", err));
+                        startup_diagnostics.push(format!("keybindings schema diagnostic: {}", err));
+                    }
+
+                    if !startup_diagnostics.is_empty() {
+                        let msg = error(&format!(
+                            "Startup configuration diagnostics | {}",
+                            startup_diagnostics.join(" | ")
+                        ));
                         app.status_message = msg.clone();
                         app.last_completion_message = Some(msg);
                     }
@@ -2646,9 +2676,104 @@ impl App {
             return Ok(None);
         }
         let contents = fs::read_to_string(path)?;
-        let settings = serde_json::from_str(&contents)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        let value: serde_json::Value = serde_json::from_str(&contents).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("settings.json is not valid JSON: {}", err),
+            )
+        })?;
+
+        Self::validate_settings_schema(&value)?;
+
+        let settings = serde_json::from_value(value).map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("settings.json has invalid fields: {}", err),
+            )
+        })?;
         Ok(Some(settings))
+    }
+
+    fn validate_settings_schema(value: &serde_json::Value) -> std::io::Result<()> {
+        let object = value.as_object().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "settings.json must be a JSON object",
+            )
+        })?;
+
+        let mut errors = Vec::new();
+
+        match object.get("theme").and_then(serde_json::Value::as_str) {
+            Some("default") | Some("high_contrast") => {}
+            Some(other) => errors.push(format!(
+                "theme must be 'default' or 'high_contrast' (found '{}')",
+                other
+            )),
+            None => errors.push("missing required field: theme".to_string()),
+        }
+
+        if !object
+            .get("notifications")
+            .is_some_and(serde_json::Value::is_boolean)
+        {
+            errors.push("notifications must be a boolean".to_string());
+        }
+
+        if !object
+            .get("autosync")
+            .is_some_and(serde_json::Value::is_boolean)
+        {
+            errors.push("autosync must be a boolean".to_string());
+        }
+
+        if let Some(suggestions) = object.get("suggestions") {
+            if let Some(suggestions_obj) = suggestions.as_object() {
+                if !suggestions_obj
+                    .get("enabled")
+                    .is_some_and(serde_json::Value::is_boolean)
+                {
+                    errors.push("suggestions.enabled must be a boolean".to_string());
+                }
+
+                match suggestions_obj
+                    .get("max_suggestions")
+                    .and_then(serde_json::Value::as_u64)
+                {
+                    Some(v) if (1..=5).contains(&v) => {}
+                    Some(v) => errors.push(format!(
+                        "suggestions.max_suggestions must be between 1 and 5 (found {})",
+                        v
+                    )),
+                    None => {
+                        errors.push("suggestions.max_suggestions must be an integer".to_string())
+                    }
+                }
+
+                match suggestions_obj
+                    .get("max_length")
+                    .and_then(serde_json::Value::as_u64)
+                {
+                    Some(v) if (20..=200).contains(&v) => {}
+                    Some(v) => errors.push(format!(
+                        "suggestions.max_length must be between 20 and 200 (found {})",
+                        v
+                    )),
+                    None => errors.push("suggestions.max_length must be an integer".to_string()),
+                }
+            } else {
+                errors.push("suggestions must be an object".to_string());
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("settings schema validation failed: {}", errors.join("; ")),
+            ))
+        }
     }
 }
 

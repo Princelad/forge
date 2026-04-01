@@ -15,9 +15,9 @@
     - [x] Add destructive action confirmations (drop stash, delete branch, hard reset-like actions if exposed).
     - [x] Improve keyboard discoverability with contextual key hints per page.
   - 3) Configuration and persistence
-    - [ ] Finalize default keymap profile and document overrides.
-    - [ ] Validate settings/keybindings schema on startup with user-friendly diagnostics.
-    - [ ] Add migration handling for future `.forge/` data format changes.
+    - [x] Finalize default keymap profile and document overrides.
+    - [x] Validate settings/keybindings schema on startup with user-friendly diagnostics.
+    - [x] Add migration handling for future `.forge/` data format changes.
   - 4) Packaging and install readiness
     - [ ] Add release build profile checks and size/perf sanity benchmark pass.
     - [ ] Provide install paths for Linux/macOS (binary download + cargo install instructions).
