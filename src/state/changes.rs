@@ -432,6 +432,35 @@ mod tests {
     }
 
     #[test]
+    fn test_manual_edit_persists_until_another_suggestion_is_applied() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![
+            make_suggestion("feat", "first"),
+            make_suggestion("fix", "second"),
+        ]);
+
+        assert!(state.apply_suggestion_at(0));
+        state.append_commit_char('!');
+        state.navigate_suggestion_down();
+
+        assert_eq!(state.commit_message, "feat: first!");
+
+        assert!(state.apply_selected_suggestion());
+        assert_eq!(state.commit_message, "fix: second");
+    }
+
+    #[test]
+    fn test_invalid_suggestion_apply_does_not_overwrite_manual_message() {
+        let mut state = ChangesState::new();
+        state.set_suggestions(vec![make_suggestion("feat", "first")]);
+        assert!(state.apply_selected_suggestion());
+
+        state.append_commit_char('!');
+        assert!(!state.apply_suggestion_at(99));
+        assert_eq!(state.commit_message, "feat: first!");
+    }
+
+    #[test]
     fn test_clear_suggestions() {
         let mut state = ChangesState::new();
         state.set_suggestions(vec![make_suggestion("fix", "msg")]);
