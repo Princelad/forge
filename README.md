@@ -132,6 +132,87 @@ forge --print-completion fish > ~/.config/fish/completions/forge.fish
 
 See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 
+## 5-Minute Quickstart Workflow
+
+This walkthrough covers: init, stage, commit, branch, and sync.
+
+```bash
+# 1) Start in your repository
+cd /path/to/your/repo
+forge
+
+# 2) Make a change in another terminal
+echo "# notes" >> NOTES.md
+
+# 3) Stage and commit in Forge
+# - Tab to Changes view
+# - Use Up/Down to select file
+# - Press Space to stage
+# - Press 1/2/3 to apply a suggestion (optional)
+# - Press Enter to type/edit commit message
+# - Press Enter again to commit
+
+# 4) Branch workflow in Forge
+# - Tab to Branch Manager
+# - Press n to create branch (example: feat/quickstart)
+# - Press Enter to switch to selected branch
+
+# 5) Sync workflow in Forge
+# - Tab to Changes view
+# - Press f to fetch
+# - Press Ctrl+l to pull
+# - Press p to push
+```
+
+Expected result: your change is committed on a feature branch and synced with the selected remote.
+
+## Troubleshooting Decision Tree
+
+Start here when an action fails:
+
+1. Is the error about authentication (`auth`, `permission denied`, `publickey`)?
+	- Verify remote URL and credentials.
+	- Re-run with valid SSH key or HTTPS token.
+2. Is the error about merge conflicts?
+	- Open Merge view in Forge.
+	- Resolve per-file by choosing Local/Incoming and commit resolution.
+3. Are you in detached HEAD state?
+	- Create or switch to a normal branch in Branch Manager.
+	- Retry commit/push after switching.
+4. Is there a lock file error (`index.lock` or refs lock)?
+	- Ensure no other Git process is running.
+	- Remove stale lock file only after confirming no active Git command.
+5. Is the remote operation failing repeatedly?
+	- Press `?` for key hints and verify selected remote in Settings.
+	- Run fetch first, then pull/push.
+
+If still blocked, capture the exact status bar message and open an issue.
+
+## Commit Suggestions
+
+Forge includes a rule-based commit suggestion engine in Changes view.
+
+Behavior:
+
+1. Suggestions are generated only from staged changes.
+2. Suggestions are ranked by confidence.
+3. Press `1-3` to apply a suggestion, then edit manually before commit.
+4. Branch names with issue keys can influence suggestion formatting.
+
+Limits:
+
+1. Up to `max_suggestions` entries (validated range: 1-5).
+2. Message length capped by `max_length` (validated range: 20-200).
+3. No suggestions are shown when no staged files exist.
+
+Config knobs:
+
+1. `settings.suggestions.enabled`
+2. `settings.suggestions.max_suggestions`
+3. `settings.suggestions.max_length`
+
+These are available in Settings and persisted in `.forge/settings.json`.
+
 ## Keymap Overrides
 
 Forge writes a default keymap profile to `.forge/keybindings.default.toml` on startup (if missing).
