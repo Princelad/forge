@@ -19,9 +19,9 @@
     - [x] Validate settings/keybindings schema on startup with user-friendly diagnostics.
     - [x] Add migration handling for future `.forge/` data format changes.
   - 4) Packaging and install readiness
-    - [ ] Add release build profile checks and size/perf sanity benchmark pass.
-    - [ ] Provide install paths for Linux/macOS (binary download + cargo install instructions).
-    - [ ] Add shell completion generation/install instructions if supported.
+    - [x] Add release build profile checks and size/perf sanity benchmark pass.
+    - [x] Provide install paths for Linux/macOS (binary download + cargo install instructions).
+    - [x] Add shell completion generation/install instructions if supported.
   - 5) Documentation required for first-time usability
     - [ ] Publish a 5-minute quickstart workflow in `README.md` (init, stage, commit, branch, sync).
     - [ ] Add troubleshooting decision tree for common failures (auth, merge conflicts, detached HEAD, lock files).
