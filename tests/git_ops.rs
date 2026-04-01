@@ -98,6 +98,132 @@ fn fixture_helpers_create_branch() {
 }
 
 #[test]
+fn create_branch_appears_in_list_branches() {
+    let fixture = RepoFixture::new().expect("fixture init failed");
+    fixture
+        .commit_file("foo.txt", "hello", "initial")
+        .expect("commit failed");
+
+    let client = GitClient::discover(fixture.path()).expect("discover failed");
+    client
+        .create_branch("feature")
+        .expect("create branch failed");
+
+    let branches = client
+        .list_branches(true, false)
+        .expect("list branches failed");
+    assert!(branches.iter().any(|(name, _)| name == "feature"));
+}
+
+#[test]
+fn checkout_branch_switches_head_branch() {
+    let fixture = RepoFixture::new().expect("fixture init failed");
+    fixture
+        .commit_file("foo.txt", "hello", "initial")
+        .expect("commit failed");
+
+    let client = GitClient::discover(fixture.path()).expect("discover failed");
+    client
+        .create_branch("feature")
+        .expect("create branch failed");
+    client.checkout_branch("feature").expect("checkout failed");
+
+    let current = client.head_branch().expect("head branch missing");
+    assert_eq!(current, "feature");
+}
+
+#[test]
+fn delete_branch_removes_local_branch() {
+    let fixture = RepoFixture::new().expect("fixture init failed");
+    fixture
+        .commit_file("foo.txt", "hello", "initial")
+        .expect("commit failed");
+
+    let client = GitClient::discover(fixture.path()).expect("discover failed");
+    client
+        .create_branch("feature")
+        .expect("create branch failed");
+    client
+        .delete_branch("feature")
+        .expect("delete branch failed");
+
+    assert!(
+        fixture
+            .repo()
+            .find_branch("feature", BranchType::Local)
+            .is_err(),
+        "feature branch should not exist after deletion"
+    );
+}
+
+#[test]
+fn list_branches_with_upstream_shows_tracked_remote_branch() {
+    let fixture = RepoFixture::new().expect("fixture init failed");
+    fixture
+        .commit_file("foo.txt", "hello", "initial")
+        .expect("commit failed");
+
+    let client = GitClient::discover(fixture.path()).expect("discover failed");
+    client
+        .create_branch("feature/local")
+        .expect("create branch failed");
+
+    fixture
+        .repo()
+        .remote("origin", "https://example.invalid/forge.git")
+        .expect("create remote failed");
+
+    let head_oid = fixture
+        .repo()
+        .head()
+        .expect("head missing")
+        .target()
+        .expect("head target missing");
+
+    fixture
+        .repo()
+        .reference(
+            "refs/remotes/origin/feature/local",
+            head_oid,
+            true,
+            "create remote tracking ref",
+        )
+        .expect("create remote tracking ref failed");
+
+    let mut local_branch = fixture
+        .repo()
+        .find_branch("feature/local", BranchType::Local)
+        .expect("local branch missing");
+    local_branch
+        .set_upstream(Some("origin/feature/local"))
+        .expect("set upstream failed");
+
+    let upstream = client
+        .get_upstream_branch("feature/local")
+        .expect("get upstream failed");
+    assert_eq!(upstream.as_deref(), Some("origin/feature/local"));
+
+    let branches = client
+        .list_branches_with_upstream(true, true)
+        .expect("list branches with upstream failed");
+
+    let local = branches
+        .iter()
+        .find(|(name, _is_current, is_remote, _upstream)| name == "feature/local" && !*is_remote)
+        .expect("local feature branch missing");
+    assert_eq!(local.3.as_deref(), Some("origin/feature/local"));
+
+    assert!(
+        branches
+            .iter()
+            .any(|(name, _is_current, is_remote, _upstream)| {
+                name == "origin/feature/local" && *is_remote
+            }),
+        "remote tracking branch should be listed"
+    );
+}
+
+#[test]
 fn stash_apply_keeps_entry_and_restores_changes() {
     let fixture = RepoFixture::new().expect("fixture init failed");
     fixture
