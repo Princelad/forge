@@ -16,6 +16,7 @@ pub struct StashesParams<'a> {
     pub scroll: usize,
     pub mode: StashesMode,
     pub input_buffer: &'a str,
+    pub status: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -60,6 +61,7 @@ impl StashesPage {
                     params.stashes,
                     params.selected,
                     params.scroll,
+                    params.status,
                 );
 
                 if let Some(stash) = params.stashes.get(params.selected) {
@@ -80,6 +82,7 @@ impl StashesPage {
                     params.stashes,
                     params.selected,
                     params.scroll,
+                    params.status,
                 );
                 render_input_form(
                     frame,
@@ -99,6 +102,7 @@ impl StashesPage {
         stashes: &[StashInfo],
         selected: usize,
         scroll: usize,
+        status: &str,
     ) {
         let items: Vec<ListItem> = stashes
             .iter()
@@ -110,11 +114,28 @@ impl StashesPage {
                 ]))
             })
             .collect();
+        let items = if items.is_empty() {
+            vec![ListItem::new(
+                "No stashes found. Press n to create a stash.",
+            )]
+        } else {
+            items
+        };
 
         let mut state = create_list_state(selected, scroll, items.len());
+        let status_suffix = if status.starts_with('⟳') {
+            " | Loading"
+        } else if status.starts_with('✗') {
+            " | Error"
+        } else {
+            ""
+        };
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title("Stashes | n New, a Apply, p Pop, d Drop"))
+                .block(Block::bordered().title(format!(
+                    "Stashes | n New, a Apply, p Pop, d Drop{}",
+                    status_suffix
+                )))
                 .highlight_style(Style::new().reversed())
                 .highlight_symbol(">> "),
             area,

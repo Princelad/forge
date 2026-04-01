@@ -194,6 +194,7 @@ impl Screen {
                     search_buffer: ctx.search_buffer,
                     total_count: ctx.total_projects,
                     pane_ratio: ctx.dashboard_pane_ratio,
+                    status: ctx.status,
                 };
                 self.dashboard.render(frame, params);
             }
@@ -211,6 +212,7 @@ impl Screen {
                         scroll: ctx.changes_scroll,
                         pane_ratio: ctx.changes_pane_ratio,
                         remote_name: ctx.selected_remote.as_deref(),
+                        status: ctx.status,
                     };
                     self.changes.render(frame, params);
                 }
@@ -233,6 +235,7 @@ impl Screen {
                     scroll: ctx.stash_scroll,
                     mode: ctx.stash_mode,
                     input_buffer: ctx.stash_input_buffer,
+                    status: ctx.status,
                 };
                 self.stashes.render(frame, params);
             }
@@ -244,6 +247,7 @@ impl Screen {
                     scroll: ctx.branch_scroll,
                     mode: ctx.branch_manager_mode,
                     input_buffer: ctx.branch_input_buffer,
+                    status: ctx.status,
                 };
                 self.branch_manager.render(frame, params);
             }
@@ -257,6 +261,7 @@ impl Screen {
                         pane_focus: ctx.merge_focus,
                         scroll: ctx.merge_scroll,
                         accepted: ctx.accepted_merge,
+                        status: ctx.status,
                     };
                     self.merge.render(frame, params);
                 }
@@ -308,8 +313,10 @@ impl Screen {
             .unwrap_or_else(|| "Repo: n/a".to_string());
 
         let status_text = format!(
-            "{}  |  {}  |  Tab: Switch View  Enter: Open  ?: Help  Esc/q: Quit",
-            ctx.status, repo_badge
+            "{}  |  {}  |  {}",
+            ctx.status,
+            repo_badge,
+            self.contextual_key_hints(ctx)
         );
 
         if ctx.pending_git_ops_count > 0 {
@@ -359,6 +366,52 @@ impl Screen {
             let inner = Block::bordered().inner(popup_area);
             frame.render_widget(Clear, inner);
             self.help.render(frame, inner);
+        }
+    }
+
+    fn contextual_key_hints(&self, ctx: &RenderContext) -> String {
+        match ctx.mode {
+            AppMode::Dashboard => {
+                "Tab view | Ctrl+F search | ↑↓ select | Enter open | ? help | Esc/q quit".into()
+            }
+            AppMode::Changes => {
+                "Space stage | Enter type/commit | 1-3 suggestion | f/p remote | Ctrl+l pull".into()
+            }
+            AppMode::BranchManager => {
+                if matches!(
+                    ctx.branch_manager_mode,
+                    crate::pages::branch_manager::BranchManagerMode::CreateBranch
+                ) {
+                    "Enter confirm new branch | Esc cancel | Tab switch view".into()
+                } else {
+                    "↑↓ select | Enter switch | n create | d delete (confirm) | Tab switch view"
+                        .into()
+                }
+            }
+            AppMode::Stashes => {
+                if matches!(ctx.stash_mode, crate::pages::stashes::StashesMode::Create) {
+                    "Enter confirm stash | Esc cancel | Tab switch view".into()
+                } else {
+                    "↑↓ select | n create | a apply | p pop | d drop (confirm) | Tab switch view"
+                        .into()
+                }
+            }
+            AppMode::MergeVisualizer => {
+                "↑↓ file | ←→ pane | Enter accept pane | r resolve | Tab switch view".into()
+            }
+            AppMode::CommitHistory => {
+                "↑↓ select commit | c cherry-pick | Enter view files | Tab switch view".into()
+            }
+            AppMode::ProjectBoard => {
+                "←→ column | ↑↓ item | Enter move status | Tab switch view".into()
+            }
+            AppMode::ModuleManager => {
+                "Tab switch list | n create | e edit | d delete | Enter confirm | Tab switch view"
+                    .into()
+            }
+            AppMode::Settings => {
+                "↑↓ select setting | Enter toggle | Tab switch view | ? help".into()
+            }
         }
     }
 

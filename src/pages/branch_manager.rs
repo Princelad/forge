@@ -41,6 +41,7 @@ pub struct BranchManagerParams<'a> {
     pub scroll: usize,
     pub mode: BranchManagerMode,
     pub input_buffer: &'a str,
+    pub status: &'a str,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,7 @@ impl BranchManager {
                     params.branches,
                     params.selected,
                     params.scroll,
+                    params.status,
                 );
             }
             BranchManagerMode::CreateBranch => {
@@ -80,6 +82,7 @@ impl BranchManager {
                     params.branches,
                     params.selected,
                     params.scroll,
+                    params.status,
                 );
                 self.render_create_form(frame, layout[1], params.input_buffer);
             }
@@ -93,6 +96,7 @@ impl BranchManager {
         branches: &[BranchInfo],
         selected: usize,
         scroll: usize,
+        status: &str,
     ) {
         let items: Vec<ListItem> = branches
             .iter()
@@ -145,12 +149,29 @@ impl BranchManager {
                 ListItem::new(Line::from(line_spans))
             })
             .collect();
+        let items = if items.is_empty() {
+            vec![ListItem::new(
+                "No branches available yet. Create one with n.",
+            )]
+        } else {
+            items
+        };
 
         let mut state = create_list_state(selected, scroll, items.len());
+        let status_suffix = if status.starts_with('⟳') {
+            " | Loading"
+        } else if status.starts_with('✗') {
+            " | Error"
+        } else {
+            ""
+        };
 
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title("Branches | ↵ Switch | n New | d Delete"))
+                .block(Block::bordered().title(format!(
+                    "Branches | ↵ Switch | n New | d Delete{}",
+                    status_suffix
+                )))
                 .highlight_style(Style::new().reversed())
                 .highlight_symbol(">> "),
             area,

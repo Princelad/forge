@@ -17,6 +17,7 @@ pub struct DashboardParams<'a> {
     pub search_buffer: &'a str,
     pub total_count: usize,
     pub pane_ratio: u16,
+    pub status: &'a str,
 }
 
 #[derive(Debug)]
@@ -50,17 +51,33 @@ impl Dashboard {
             .iter()
             .map(|p| ListItem::new(p.name.clone()))
             .collect();
+        let items = if items.is_empty() {
+            vec![ListItem::new(
+                "No projects found. Open a Git repository to get started.",
+            )]
+        } else {
+            items
+        };
         let mut state = create_list_state(params.selected, params.scroll, items.len());
+
+        let status_suffix = if params.status.starts_with('⟳') {
+            " | Loading"
+        } else if params.status.starts_with('✗') {
+            " | Error"
+        } else {
+            ""
+        };
 
         let title = if params.search_active {
             format!(
-                "Projects (search: {} · {}/{} matches) | Esc to exit search",
+                "Projects (search: {} · {}/{} matches) | Esc to exit search{}",
                 params.search_buffer,
                 params.projects.len(),
-                params.total_count
+                params.total_count,
+                status_suffix
             )
         } else {
-            "Projects (Ctrl+F: search, f: fetch)".to_string()
+            format!("Projects (Ctrl+F: search, f: fetch){}", status_suffix)
         };
 
         frame.render_stateful_widget(
@@ -87,7 +104,10 @@ impl Dashboard {
                     p.description
                 )
             })
-            .unwrap_or_else(|| "No project".into());
+            .unwrap_or_else(|| {
+                "No active project data.\n\nTry:\n- Open this app from inside a Git repository\n- Press Tab to navigate to other views\n- Press ? for keyboard help"
+                    .into()
+            });
         frame.render_widget(
             Paragraph::new(details).block(Block::bordered().title("Info")),
             cols[1],
