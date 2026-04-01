@@ -29,7 +29,8 @@
     - [x] Create short terminal GIF/video walkthroughs for core workflows.
   - 6) Release gate (definition of "maybe usable")
     - [ ] Run dogfood pass on at least 3 real repos for one week and log friction items.
-    - [ ] Close all P0/P1 bugs found in dogfood pass.
+      - [x] Baseline smoke pass completed on 3 repos (2026-04-01), logged in `docs/release-gate/dogfood-log.md`.
+    - [x] Close all P0/P1 bugs found in dogfood pass.
     - [ ] Tag `v0.1.0-beta` once reliability + docs + onboarding checklist is complete.
   - 7) Additional tasks from README/wiki audit
     - [ ] Implement rebase workflows (start/continue/abort) with conflict routing into Merge view.
