@@ -21,6 +21,7 @@ pub struct ChangesParams<'a> {
     pub suggestions: &'a [CommitSuggestion],
     pub selected_suggestion: usize,
     pub no_suggestions_message: &'a str,
+    pub status: &'a str,
 }
 
 #[derive(Debug)]
@@ -57,12 +58,27 @@ impl ChangesPage {
             .iter()
             .map(|c| ListItem::new(Self::fmt_change(c)))
             .collect();
+        let items = if items.is_empty() {
+            vec![ListItem::new(
+                "No changed files. Working tree is clean or still loading.",
+            )]
+        } else {
+            items
+        };
         let mut state = create_list_state(params.selected, params.scroll, items.len());
+        let status_suffix = if params.status.starts_with('⟳') {
+            " | Loading"
+        } else if params.status.starts_with('✗') {
+            " | Error"
+        } else {
+            ""
+        };
         frame.render_stateful_widget(
             List::new(items)
-                .block(Block::bordered().title(Self::format_title(
-                    params.project.branch.as_str(),
-                    params.remote_name,
+                .block(Block::bordered().title(format!(
+                    "{}{}",
+                    Self::format_title(params.project.branch.as_str(), params.remote_name,),
+                    status_suffix
                 )))
                 .highlight_style(ratatui::style::Style::new().reversed())
                 .highlight_symbol(">> ")
@@ -82,7 +98,15 @@ impl ChangesPage {
             .changes
             .get(params.selected)
             .map(|c| c.diff_preview.clone())
-            .unwrap_or_else(|| "Select a file".into());
+            .unwrap_or_else(|| {
+                if params.status.starts_with('⟳') {
+                    "Loading changes...".into()
+                } else if params.status.starts_with('✗') {
+                    "Could not load changes. Check status bar for recovery steps.".into()
+                } else {
+                    "No changed files. Make edits or stage files to continue.".into()
+                }
+            });
         frame.render_widget(
             Paragraph::new(preview).block(Block::bordered().title("Diff Preview")),
             right_layout[0],

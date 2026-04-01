@@ -41,6 +41,7 @@ pub struct MergeVisualizerParams<'a> {
     pub pane_focus: MergePaneFocus,
     pub scroll: usize,
     pub accepted: Option<MergePaneFocus>,
+    pub status: &'a str,
 }
 
 #[derive(Debug)]
@@ -73,6 +74,13 @@ impl MergeVisualizer {
             .iter()
             .map(|c| ListItem::new(format!("{} ({:?})", c.path, c.status)))
             .collect();
+        let file_items = if file_items.is_empty() {
+            vec![ListItem::new(
+                "No merge conflicts. You're ready to continue.",
+            )]
+        } else {
+            file_items
+        };
         let selected = if file_items.is_empty() {
             None
         } else {
@@ -81,7 +89,14 @@ impl MergeVisualizer {
         let mut state = ListState::default()
             .with_selected(selected)
             .with_offset(params.scroll);
-        let files_block = Block::bordered().title("Files");
+        let status_suffix = if params.status.starts_with('⟳') {
+            " | Loading"
+        } else if params.status.starts_with('✗') {
+            " | Error"
+        } else {
+            ""
+        };
+        let files_block = Block::bordered().title(format!("Files{}", status_suffix));
         let files_block = if params.pane_focus == MergePaneFocus::Files {
             files_block.border_style(Style::new().yellow())
         } else {
@@ -130,8 +145,18 @@ impl MergeVisualizer {
                 )
             }
             None => (
-                "(local)\n(no merge conflicts)".to_string(),
-                "(incoming)\n(no merge conflicts)".to_string(),
+                if params.status.starts_with('⟳') {
+                    "(local)\n(loading merge state...)".to_string()
+                } else {
+                    "(local)\n(no merge conflicts)".to_string()
+                },
+                if params.status.starts_with('⟳') {
+                    "(incoming)\n(loading merge state...)".to_string()
+                } else if params.status.starts_with('✗') {
+                    "(incoming)\n(failed to load merge state; check status bar)".to_string()
+                } else {
+                    "(incoming)\n(no merge conflicts)".to_string()
+                },
             ),
         };
 
