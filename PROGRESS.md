@@ -6,7 +6,7 @@
   - 1) Reliability and correctness (must pass before release)
     - [x] Add CI pipeline for `cargo fmt --check`, `cargo clippy -- -W clippy::pedantic`, and `cargo test`.
     - [x] Expand integration coverage for branch flows (create/switch/delete/track remote branches).
-    - [ ] Add integration tests for stash/cherry-pick conflict recovery paths.
+    - [x] Add integration tests for stash/cherry-pick conflict recovery paths.
     - [ ] Add regression tests for commit suggestion acceptance and manual edit flow.
     - [ ] Audit and remove panic-prone `unwrap()`/`expect()` usage in runtime UI paths.
   - 2) UX hardening for daily use
