@@ -10,10 +10,10 @@
     - [x] Add regression tests for commit suggestion acceptance and manual edit flow.
     - [x] Audit and remove panic-prone `unwrap()`/`expect()` usage in runtime UI paths.
   - 2) UX hardening for daily use
-    - [ ] Add clear empty/loading/error states across all pages (dashboard, changes, branches, stash, merge).
-    - [ ] Standardize success/error notifications in status bar with actionable recovery hints.
-    - [ ] Add destructive action confirmations (drop stash, delete branch, hard reset-like actions if exposed).
-    - [ ] Improve keyboard discoverability with contextual key hints per page.
+    - [x] Add clear empty/loading/error states across all pages (dashboard, changes, branches, stash, merge).
+    - [x] Standardize success/error notifications in status bar with actionable recovery hints.
+    - [x] Add destructive action confirmations (drop stash, delete branch, hard reset-like actions if exposed).
+    - [x] Improve keyboard discoverability with contextual key hints per page.
   - 3) Configuration and persistence
     - [ ] Finalize default keymap profile and document overrides.
     - [ ] Validate settings/keybindings schema on startup with user-friendly diagnostics.
