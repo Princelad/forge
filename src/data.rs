@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+const CURRENT_FORGE_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ForgeSchemaManifest {
+    schema_version: u32,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum FileStatus {
     Modified,
@@ -107,6 +115,7 @@ impl Store {
 
         let dir = workdir.join(".forge");
         create_dir_all(&dir)?;
+        Self::write_schema_manifest(&dir)?;
 
         if let Some(project) = self.projects.first() {
             // Save modules
@@ -129,6 +138,7 @@ impl Store {
         use std::io::Read;
 
         let dir = workdir.join(".forge");
+        let _ = Self::migrate_forge_schema(workdir)?;
 
         if let Some(project) = self.projects.first_mut() {
             // Load modules
@@ -154,6 +164,82 @@ impl Store {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn migrate_forge_schema(workdir: &std::path::Path) -> std::io::Result<Option<String>> {
+        use std::fs;
+
+        let dir = workdir.join(".forge");
+        if !dir.exists() {
+            return Ok(None);
+        }
+
+        let manifest_path = dir.join("schema.json");
+        if manifest_path.exists() {
+            let contents = fs::read_to_string(&manifest_path)?;
+            let manifest: ForgeSchemaManifest = serde_json::from_str(&contents).map_err(|err| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid .forge/schema.json: {}", err),
+                )
+            })?;
+
+            if manifest.schema_version > CURRENT_FORGE_SCHEMA_VERSION {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Unsupported .forge schema version {} (max supported: {})",
+                        manifest.schema_version, CURRENT_FORGE_SCHEMA_VERSION
+                    ),
+                ));
+            }
+
+            if manifest.schema_version == CURRENT_FORGE_SCHEMA_VERSION {
+                return Ok(None);
+            }
+
+            return Self::migrate_from_version(&dir, manifest.schema_version);
+        }
+
+        let has_legacy_files =
+            dir.join("modules.json").exists() || dir.join("developers.json").exists();
+        if has_legacy_files {
+            Self::write_schema_manifest(&dir)?;
+            return Ok(Some(
+                "Migrated legacy .forge data to schema v1 manifest".to_string(),
+            ));
+        }
+
+        Ok(None)
+    }
+
+    fn migrate_from_version(
+        dir: &std::path::Path,
+        version: u32,
+    ) -> std::io::Result<Option<String>> {
+        match version {
+            0 => {
+                Self::write_schema_manifest(dir)?;
+                Ok(Some(
+                    "Migrated .forge schema from v0 to v1 manifest".to_string(),
+                ))
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("No migration path from .forge schema version {}", version),
+            )),
+        }
+    }
+
+    fn write_schema_manifest(dir: &std::path::Path) -> std::io::Result<()> {
+        use std::fs;
+        let manifest = ForgeSchemaManifest {
+            schema_version: CURRENT_FORGE_SCHEMA_VERSION,
+        };
+        let contents = serde_json::to_string_pretty(&manifest)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        fs::write(dir.join("schema.json"), contents)?;
         Ok(())
     }
 
@@ -312,6 +398,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_file_status_creation() {
@@ -612,5 +699,19 @@ mod tests {
             2,
             "Only new developer should be added"
         );
+    }
+
+    #[test]
+    fn test_migrate_forge_schema_creates_manifest_for_legacy_data() {
+        let temp = std::env::temp_dir().join(format!("forge-migrate-{}", Uuid::new_v4()));
+        let forge_dir = temp.join(".forge");
+        fs::create_dir_all(&forge_dir).expect("create .forge dir");
+        fs::write(forge_dir.join("modules.json"), "[]").expect("write modules");
+
+        let migration = Store::migrate_forge_schema(&temp).expect("migration should succeed");
+        assert!(migration.is_some());
+        assert!(forge_dir.join("schema.json").exists());
+
+        let _ = fs::remove_dir_all(temp);
     }
 }
