@@ -23,10 +23,10 @@
     - [x] Provide install paths for Linux/macOS (binary download + cargo install instructions).
     - [x] Add shell completion generation/install instructions if supported.
   - 5) Documentation required for first-time usability
-    - [ ] Publish a 5-minute quickstart workflow in `README.md` (init, stage, commit, branch, sync).
-    - [ ] Add troubleshooting decision tree for common failures (auth, merge conflicts, detached HEAD, lock files).
-    - [ ] Document commit suggestion behavior, limits, and config knobs in wiki + README.
-    - [ ] Create short terminal GIF/video walkthroughs for core workflows.
+    - [x] Publish a 5-minute quickstart workflow in `README.md` (init, stage, commit, branch, sync).
+    - [x] Add troubleshooting decision tree for common failures (auth, merge conflicts, detached HEAD, lock files).
+    - [x] Document commit suggestion behavior, limits, and config knobs in wiki + README.
+    - [x] Create short terminal GIF/video walkthroughs for core workflows.
   - 6) Release gate (definition of "maybe usable")
     - [ ] Run dogfood pass on at least 3 real repos for one week and log friction items.
     - [ ] Close all P0/P1 bugs found in dogfood pass.
