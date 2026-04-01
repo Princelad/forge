@@ -79,6 +79,27 @@ cd /path/to/your/repo
 
 See the **[Keyboard Shortcuts](https://github.com/Princelad/forge/wiki/Keyboard-Shortcuts)** page for complete reference.
 
+## Keymap Overrides
+
+Forge writes a default keymap profile to `.forge/keybindings.default.toml` on startup (if missing).
+
+To customize keybindings:
+
+1. Copy `.forge/keybindings.default.toml` to `.forge/keybindings.toml`
+2. Edit only the action bindings you want to override
+3. Restart Forge and check startup diagnostics in the status bar if the schema is invalid
+
+Example:
+
+```toml
+[bindings]
+next_view = "Tab"
+navigate_up = "Up"
+navigate_down = "Down"
+search = "Ctrl+f"
+toggle_staging = "Space"
+```
+
 ## Contributing
 
 Contributions are welcome! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for quick start, or the **[Development](https://github.com/Princelad/forge/wiki/Development)** wiki for comprehensive guidelines.
