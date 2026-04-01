@@ -119,6 +119,7 @@ pub struct App {
     status_message: String,
     progress_message: Option<String>,
     last_completion_message: Option<String>,
+    pending_destructive_confirmation: Option<PendingDestructiveAction>,
     store: data::Store,
     settings: AppSettings,
     git_client: Option<git::GitClient>,
@@ -169,6 +170,12 @@ pub struct App {
     selected_remote_index: Option<usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PendingDestructiveAction {
+    DeleteBranch { name: String },
+    DropStash { index: usize, name: String },
+}
+
 impl Default for App {
     fn default() -> Self {
         Self::new()
@@ -188,6 +195,7 @@ impl App {
             status_message: String::from("Ready | Press ? for help"),
             progress_message: None,
             last_completion_message: None,
+            pending_destructive_confirmation: None,
             store: data::Store::new(),
             show_help: false,
             search_active: false,
@@ -539,6 +547,43 @@ impl App {
             self.status_message = msg;
         } else {
             self.last_completion_message = None;
+        }
+    }
+
+    fn notify_success_with_hint(&mut self, message: &str, hint: &str) {
+        self.apply_completion_message(success(&format!("{} | Hint: {}", message, hint)), false);
+    }
+
+    fn notify_info_with_hint(&mut self, message: &str, hint: &str) {
+        self.apply_completion_message(format!("ℹ {} | Hint: {}", message, hint), false);
+    }
+
+    fn request_delete_branch_confirmation(&mut self, name: &str) {
+        self.pending_destructive_confirmation = Some(PendingDestructiveAction::DeleteBranch {
+            name: name.to_string(),
+        });
+        self.notify_info_with_hint(
+            &format!("Delete branch '{}'", name),
+            "Press d again to confirm, or press Esc to cancel",
+        );
+    }
+
+    fn request_drop_stash_confirmation(&mut self, index: usize, name: &str) {
+        self.pending_destructive_confirmation = Some(PendingDestructiveAction::DropStash {
+            index,
+            name: name.to_string(),
+        });
+        self.notify_info_with_hint(
+            &format!("Drop stash@{{{}}}: {}", index, name),
+            "Press d again to confirm, or press Esc to cancel",
+        );
+    }
+
+    fn clear_destructive_confirmation_if_unrelated(&mut self, update: &ActionStateUpdate) {
+        let destructive_requested =
+            update.branch_delete_requested.is_some() || update.stash_drop_requested.is_some();
+        if !destructive_requested {
+            self.pending_destructive_confirmation = None;
         }
     }
 
@@ -991,6 +1036,7 @@ impl App {
     }
 
     fn apply_action_updates(&mut self, update: ActionStateUpdate) {
+        self.clear_destructive_confirmation_if_unrelated(&update);
         let window_size = self.window_size.max(1);
         // Apply all optional state updates
         if let Some(focus) = update.focus {
@@ -1952,7 +1998,10 @@ impl App {
             if let Some(client) = &self.git_client {
                 match client.checkout_branch(&name) {
                     Ok(()) => {
-                        self.status_message = success(&format!("Switched to branch: {}", name));
+                        self.notify_success_with_hint(
+                            &format!("Switched to branch: {}", name),
+                            "Press Tab to review changes, or n in Branches to create a new branch",
+                        );
                         // Refresh branch list
                         self.refresh_view_cache();
                         // Update project branch info
@@ -1978,7 +2027,10 @@ impl App {
         if let Some(client) = &self.git_client {
             match client.create_branch(branch_name) {
                 Ok(()) => {
-                    self.status_message = success(&format!("Created branch: {}", branch_name));
+                    self.notify_success_with_hint(
+                        &format!("Created branch: {}", branch_name),
+                        "Use Enter to switch to it when ready",
+                    );
                     self.branch_manager.exit_create_mode();
                     // Refresh branch list
                     self.refresh_view_cache();
@@ -2001,14 +2053,32 @@ impl App {
 
         if let Some((name, is_current)) = branch_info {
             if is_current {
-                self.status_message = "Cannot delete current branch".into();
+                self.notify_info_with_hint(
+                    "Cannot delete current branch",
+                    "Switch to another branch first, then delete",
+                );
                 return;
             }
+
+            let confirmed = matches!(
+                self.pending_destructive_confirmation.as_ref(),
+                Some(PendingDestructiveAction::DeleteBranch { name: pending_name }) if pending_name == &name
+            );
+
+            if !confirmed {
+                self.request_delete_branch_confirmation(&name);
+                return;
+            }
+
+            self.pending_destructive_confirmation = None;
 
             if let Some(client) = &self.git_client {
                 match client.delete_branch(&name) {
                     Ok(()) => {
-                        self.status_message = success(&format!("Deleted branch: {}", name));
+                        self.notify_success_with_hint(
+                            &format!("Deleted branch: {}", name),
+                            "Press r to refresh branch list if needed",
+                        );
                         // Refresh branch list
                         self.refresh_view_cache();
                     }
@@ -2028,7 +2098,10 @@ impl App {
         if let Some(client) = &self.git_client {
             match client.create_stash(&message) {
                 Ok(_oid) => {
-                    self.status_message = success(&format!("Created stash: {}", message));
+                    self.notify_success_with_hint(
+                        &format!("Created stash: {}", message),
+                        "Use a to apply or p to pop from Stashes view",
+                    );
                     self.stashes.exit_create_mode();
                     self.refresh_view_cache();
                     if let Err(e) = self.refresh_changes_summary(true) {
@@ -2049,7 +2122,10 @@ impl App {
         let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
             Some(stash) => stash,
             None => {
-                self.status_message = "No stash selected".into();
+                self.notify_info_with_hint(
+                    "No stash selected",
+                    "Use ↑/↓ to select a stash entry first",
+                );
                 return;
             }
         };
@@ -2057,10 +2133,10 @@ impl App {
         if let Some(client) = &self.git_client {
             match client.apply_stash(stash.index) {
                 Ok(()) => {
-                    self.status_message = success(&format!(
-                        "Applied stash: stash@{{{}}}: {}",
-                        stash.index, stash.name
-                    ));
+                    self.notify_success_with_hint(
+                        &format!("Applied stash: stash@{{{}}}: {}", stash.index, stash.name),
+                        "Review changes and commit or stash again as needed",
+                    );
                     if let Err(e) = self.refresh_changes_summary(false) {
                         self.report_git_error("Failed to refresh changes", &e);
                     }
@@ -2079,7 +2155,10 @@ impl App {
         let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
             Some(stash) => stash,
             None => {
-                self.status_message = "No stash selected".into();
+                self.notify_info_with_hint(
+                    "No stash selected",
+                    "Use ↑/↓ to select a stash entry first",
+                );
                 return;
             }
         };
@@ -2087,10 +2166,10 @@ impl App {
         if let Some(client) = &self.git_client {
             match client.pop_stash(stash.index) {
                 Ok(()) => {
-                    self.status_message = success(&format!(
-                        "Popped stash: stash@{{{}}}: {}",
-                        stash.index, stash.name
-                    ));
+                    self.notify_success_with_hint(
+                        &format!("Popped stash: stash@{{{}}}: {}", stash.index, stash.name),
+                        "The stash is removed; review and commit recovered changes",
+                    );
                     self.refresh_view_cache();
                     if let Err(e) = self.refresh_changes_summary(false) {
                         self.report_git_error("Failed to refresh changes", &e);
@@ -2108,20 +2187,36 @@ impl App {
             return;
         }
         let stash = match self.stashes.cached_stashes.get(self.stashes.selected_index) {
-            Some(stash) => stash,
+            Some(stash) => (stash.index, stash.name.clone()),
             None => {
-                self.status_message = "No stash selected".into();
+                self.notify_info_with_hint(
+                    "No stash selected",
+                    "Use ↑/↓ to select a stash entry first",
+                );
                 return;
             }
         };
 
+        let confirmed = matches!(
+            self.pending_destructive_confirmation.as_ref(),
+            Some(PendingDestructiveAction::DropStash { index, name })
+                if *index == stash.0 && name == &stash.1
+        );
+
+        if !confirmed {
+            self.request_drop_stash_confirmation(stash.0, &stash.1);
+            return;
+        }
+
+        self.pending_destructive_confirmation = None;
+
         if let Some(client) = &self.git_client {
-            match client.drop_stash(stash.index) {
+            match client.drop_stash(stash.0) {
                 Ok(()) => {
-                    self.status_message = success(&format!(
-                        "Dropped stash: stash@{{{}}}: {}",
-                        stash.index, stash.name
-                    ));
+                    self.notify_success_with_hint(
+                        &format!("Dropped stash: stash@{{{}}}: {}", stash.0, stash.1),
+                        "Use n to create a stash before risky changes",
+                    );
                     self.refresh_view_cache();
                 }
                 Err(e) => {
