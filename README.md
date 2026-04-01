@@ -65,6 +65,59 @@ cd /path/to/your/repo
 /path/to/forge/target/release/forge
 ```
 
+## Install
+
+### Linux/macOS (cargo install)
+
+```bash
+# From crates.io (when published)
+cargo install forge
+
+# From GitHub source
+cargo install --git https://github.com/Princelad/forge.git --locked
+```
+
+### Linux/macOS (binary download)
+
+```bash
+# Example for Linux x86_64
+curl -L -o forge.tar.gz \
+	https://github.com/Princelad/forge/releases/download/v0.3.1/forge-linux-x86_64.tar.gz
+tar -xzf forge.tar.gz
+sudo install -m 0755 forge /usr/local/bin/forge
+
+# Example for macOS arm64
+curl -L -o forge.tar.gz \
+	https://github.com/Princelad/forge/releases/download/v0.3.1/forge-macos-arm64.tar.gz
+tar -xzf forge.tar.gz
+sudo install -m 0755 forge /usr/local/bin/forge
+```
+
+## Shell Completion
+
+Forge supports shell completion script generation via:
+
+```bash
+forge --print-completion bash
+forge --print-completion zsh
+forge --print-completion fish
+```
+
+Install examples:
+
+```bash
+# Bash
+forge --print-completion bash > ~/.local/share/bash-completion/completions/forge
+
+# Zsh
+mkdir -p ~/.zsh/completions
+forge --print-completion zsh > ~/.zsh/completions/_forge
+
+# Fish
+mkdir -p ~/.config/fish/completions
+forge --print-completion fish > ~/.config/fish/completions/forge.fish
+```
+
 ## Usage
 
 1. **Navigate** with Tab and Arrow keys
